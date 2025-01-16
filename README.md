@@ -17,5 +17,5 @@ Makefile options:
   - `THETA`: sets up the factor to subtract from 2^PI
   - `UNROLL`: maximum factor to unroll the innermost loop (I usually set it up to around 4 otherwise for some primes it takes a lot to compile)
   - `SIMD`: decides between AVX2 and AVX512. Options=4,8.
-  - `MADD`: activates AVX512_IFMA. Options=--madd. Requires SIMD=8.
-  - `KARA`: activates Karatsuba multiplication. Options=--kara
+  - `MADD`: activates AVX512_IFMA. Options=--madd,-m. Requires SIMD=8.
+  - `KARA`: activates Karatsuba multiplication. Options=--karatsuba,-k
