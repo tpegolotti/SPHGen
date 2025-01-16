@@ -1,4 +1,4 @@
-# PolyGen Development Repository
+# SPHGen: A Program Generator for Fast Polynomial Hash Functions
 
 ## Dependencies
 
