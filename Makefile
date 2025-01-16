@@ -19,9 +19,9 @@ bin:
 	mkdir -p bin
 
 generate: src/main.cpp
-	python gen.py -p $(PI) -t $(THETA) -s $(SIMD) -u $(UNROLL) -pr $(OPTIONS)
+	python3 gen.py -p $(PI) -t $(THETA) -s $(SIMD) -u $(UNROLL) -pr $(OPTIONS)
 
-main: bin generate asm src/main.cpp
+main: bin generate src/main.cpp
 	g++ src/main.cpp -o bin/main $(FLAGS)
 
 test: bin generate src/main.cpp
@@ -39,7 +39,7 @@ plot: bin src/main.cpp
 		theta=`echo $$thetas | cut -d ' ' -f $$i`; \
 		python gen.py -p $$pi -t $$theta -s $(SIMD) -u $(UNROLL) $(OPTIONS); \
 		g++ src/main.cpp -o bin/plot $(FLAGS) -DPLOT; \
-		./bin/plot $$(( 1600 + $(SIMD) )); \
+		./bin/plot $$(( 800 + $(SIMD) )); \
 	done
 
 bench_one: bin src/main.cpp
