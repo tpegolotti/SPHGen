@@ -49,6 +49,7 @@ bench_one: bin src/main.cpp
 	
 bench_hacl:
 	export LD_LIBRARY_PATH=$(shell pwd)/others/hacl-star/dist/gcc-compatible:$LD_LIBRARY_PATH
+	@echo "bytes,cycles,multiplier,num_runs"
 	@for len in $(shell seq 128 512 25600); do \
 		g++ others/benchmark_hacl.cpp -o bin/bench_hacl -Iothers/hacl-star/dist/gcc-compatible -Lothers/hacl-star/dist/gcc-compatible -Iothers/hacl-star/dist/karamel/include/ -Iothers/hacl-star/dist/karamel/krmllib/dist/minimal/ -levercrypt -O3 -march=native -DSTRING_LEN=$$len; \
 		./bin/bench_hacl; \
