@@ -48,16 +48,17 @@ bench_one: bin src/main.cpp
 	./bin/bench $$(( 1600 + $(SIMD) )); \
 	
 bench_hacl:
-	export LD_LIBRARY_PATH=./others/hacl-star/dist/gcc-compatible:$LD_LIBRARY_PATH
+	export LD_LIBRARY_PATH=$(shell pwd)/others/hacl-star/dist/gcc-compatible:$LD_LIBRARY_PATH
 	@for len in $(shell seq 128 512 25600); do \
 		g++ others/benchmark_hacl.cpp -o bin/bench_hacl -Iothers/hacl-star/dist/gcc-compatible -Lothers/hacl-star/dist/gcc-compatible -Iothers/hacl-star/dist/karamel/include/ -Iothers/hacl-star/dist/karamel/krmllib/dist/minimal/ -levercrypt -O3 -march=native -DSTRING_LEN=$$len; \
 		./bin/bench_hacl; \
 	done
 
-bench_openssl: bench_openssl.cpp
+bench_openssl: ./others/benchmark_openssl.cpp
+	@echo "bytes,cycles"
 	@for len in $(shell seq 128 512 25600); do \
-		g++ -Iothers/opensll/include -O3 -march=native -Lothers/opensll -o bin/$@ benchmark_openssl -lcrypto -DSTRING_LEN=$$len; \
-		./bench_openssl; \
+		g++ -Iothers/opensll/include -O3 -march=native -Lothers/opensll -o bin/bench_openssl ./others/benchmark_openssl.cpp -lcrypto -DSTRING_LEN=$$len; \
+		./bin/bench_openssl; \
 	done
 
 
