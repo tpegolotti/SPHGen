@@ -2,7 +2,7 @@
 
 ## Dependencies
 
-- NTL (number theoretic library) to check correctness of algorithm ([Installation guide](https://libntl.org/doc/tour-unix.html))
+- NTL (number theoretic library) to check correctness of algorithm ([Installation guide](https://libntl.org/doc/tour-unix.html)). Place NTL library in a `./ntl` directory to run tests.
 - Jinja2 for template generation (`pip install -r requirements.txt`)
 
 ## Generating the library
