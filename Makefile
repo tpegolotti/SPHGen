@@ -21,14 +21,35 @@ bin:
 generate: src/main.cpp
 	python3 gen.py -p $(PI) -t $(THETA) -s $(SIMD) -u $(UNROLL) -pr $(OPTIONS)
 
+verify: bin generate src/main.cpp
+	python src/verify1.py
+
 main: bin generate src/main.cpp
-	g++ src/main.cpp -o bin/main $(FLAGS)
+	g++ src/main.cpp -o bin/main $(FLAGS);
+	python src/verify1.py;\
+
+asm: bin generate src/main.cpp
+	g++ src/main.cpp -o bin/main.s -S $(FLAGS)
 
 test: bin generate src/main.cpp
 	@g++ src/main.cpp -o bin/test $(TEST_FLAGS) -DTEST; \
+	python src/verify1.py;\
 	for number in `seq $(LOWER) $(UPPER)`; do \
         ./bin/test $$number; \
     done \
+
+test_batch: bin src/main.cpp
+	@pis=`echo $(PIs)`; \
+	thetas=`echo $(THETAs)`; \
+	length=`echo $$pis | wc -w`; \
+	for i in `seq 1 $$length`; do \
+		pi=`echo $$pis | cut -d ' ' -f $$i`; \
+		theta=`echo $$thetas | cut -d ' ' -f $$i`; \
+		python gen.py -p $$pi -t $$theta -s $(SIMD) -u $(UNROLL) $(OPTIONS); \
+		python src/verify1.py;\
+		g++ src/main.cpp -o bin/test $(TEST_FLAGS) -DTEST; \
+		./bin/test 128; \
+	done
 
 plot: bin src/main.cpp
 	@pis=`echo $(PIs)`; \
@@ -55,12 +76,28 @@ bench_hacl:
 		./bin/bench_hacl; \
 	done
 
+# g++ -Iothers/opensll/include -O3 -march=native -Lothers/opensll -o bin/bench_openssl ./others/benchmark_openssl.cpp -lcrypto -DSTRING_LEN=$$len; \
+
 bench_openssl: ./others/benchmark_openssl.cpp
 	@echo "bytes,cycles"
 	@for len in $(shell seq 128 512 25600); do \
-		g++ -Iothers/opensll/include -O3 -march=native -Lothers/opensll -o bin/bench_openssl ./others/benchmark_openssl.cpp -lcrypto -DSTRING_LEN=$$len; \
+		g++ -I/home/tpegolotti/git/SPHGen/others/opensll/include -O3 -march=native \
+			-o bin/bench_openssl ./others/benchmark_openssl.cpp \
+			-Lothers/openssl \
+			-l:libssl_avx4.a \
+			-l:libcrypto_avx4.a \
+			-lz -ldl -static-libgcc -DSTRING_LEN=$$len; \
 		./bin/bench_openssl; \
 	done
+
+bench_one_inc: bin src/main.cpp
+	@echo "bytes,cycles"
+	@python gen.py -p $(PI) -t $(THETA) -s $(SIMD) -u $(UNROLL) $(OPTIONS); 
+	@for len in $(shell seq 8 32 1600); do \
+		g++ src/main.cpp -o bin/bench $(FLAGS) -DBENCH_ONE; \
+		./bin/bench $$len; \
+	done
+
 
 
 clean:

@@ -14,19 +14,19 @@ def get_limb_size(pi, theta, ifma, kara):
     big = math.ceil(pi / l)
     theta_bits = math.ceil(math.log2(theta))
     if not kara:
-        res = 2*big + l*big - pi + theta_bits + math.ceil(math.log2(l))
+        res = 2*big + l*big - pi + theta_bits + math.floor(math.log2(l)) + 1
         kap = big + l*big - pi + theta_bits
     else:
-        res = 2*big + l*big - pi + theta_bits + math.ceil(math.log2(l))
+        res = 2*big + l*big - pi + theta_bits + math.floor(math.log2(l)) + 1
         kap = 0
     while res >= limit or kap >= bits:
         l += 1
         big = math.ceil(pi / l)
         if not kara:
             kap = big + l*big - pi + theta_bits
-            res = 2*big + l*big - pi + theta_bits + math.ceil(math.log2(l))
+            res = 2*big + l*big - pi + theta_bits + math.floor(math.log2(l)) + 1
         else:
-            res = 2*big + l*big - pi + theta_bits + math.ceil(math.log2(l))
+            res = 2*big + l*big - pi + theta_bits + math.floor(math.log2(l)) + 1
             kap = 0
     log_max_unroll = limit - res
     max_unroll = math.floor(2**log_max_unroll)

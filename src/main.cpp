@@ -12,12 +12,16 @@
 #include "library.h"
 using namespace NTL;
 
-ZZ initialize(int degree, unsigned char* in_str,  ZZ* in_zz, bigint* in){
-    SetSeed(ZZ(0));
+ZZ initialize(int degree, unsigned char* in_str,  ZZ* in_zz, bigint* in, int seed = 0){
+    SetSeed(ZZ(seed));
 
     for (int i = 0; i < degree; i++){
 #ifdef TEST
-        ZZ val = (ZZ(1) << _PIB) - 1;
+        ZZ val;
+        if (seed == 0)
+            val = (ZZ(1) << _PIB) - 1;
+        else
+            val = RandomBits_ZZ(_PIB);
 #else
         ZZ val = RandomBits_ZZ(_PIB);
 #endif
@@ -35,7 +39,13 @@ ZZ initialize(int degree, unsigned char* in_str,  ZZ* in_zz, bigint* in){
     }
 
 #ifdef TEST
-    return (ZZ(1) << _PIB) - _THETA - 1;
+    if (seed == 0)
+        if (_PI == _PIB)
+            return (ZZ(1) << (_PIB - 1)) - 1;
+        else 
+            return (ZZ(1) << _PIB) - 1;
+    else
+        return RandomBits_ZZ(_PIB);
 #else
     return RandomBits_ZZ(_PIB);
 #endif
@@ -47,7 +57,7 @@ double benchmark(F f, T* in, K* key, K* res, int degree, std::string name){
     std::vector<double> times;
 
     myInt64 start, end;
-    const int repetitions = 10;
+    const int repetitions = 5;
     const double cycles_req = 1e9;
 
     double multiplier = 2;
@@ -78,12 +88,16 @@ double benchmark(F f, T* in, K* key, K* res, int degree, std::string name){
 }
 
 int main(int argc, char* argv[]){
+    int degree;
     if (argc != 2){
-        std::cerr << "Usage: " << argv[0] << " <degree>" << std::endl;
-        return 1;
+        degree = 800;
+        // std::cerr << "Usage: " << argv[0] << " <degree>" << std::endl;
+        // return 1;
+    } else{
+        degree = std::stoi(argv[1]);
     }
     
-    int degree = std::stoi(argv[1]);
+    
     int string_length = degree * _BLOCK;   
 
     unsigned char* in_str = (unsigned char*)malloc(string_length);
@@ -102,7 +116,7 @@ int main(int argc, char* argv[]){
         key_ntl >>= _BIG;
     }
 
-#ifndef TEST
+#ifndef TEST    
     double start = benchmark(eval, in_str, &key, &res, _SIMD, "PolyGen");
     // double start = 0;
     double mine = benchmark(eval, in_str, &key, &res, degree, "PolyGen");
@@ -111,13 +125,11 @@ int main(int argc, char* argv[]){
     auto bpc = string_length / (mine - start);
     double model_bpc = string_length / (_CPI * (degree - _SIMD) / (_SIMD*_UNROLL));
     auto err = std::abs(cpi - _CPI) / cpi;
-    std::cout << _PI << ","  << _THETA << "," << _L << "," << _UNROLL << "," << _SIMD << "," << degree << "," << string_length << "," << mine - start << "," << _CPI << "," << cpi << "," << cpi - _CPI << "," << err << "," << (double)(cpi - _CPI) / std::max(1,_UNROLL-1)  << std::endl;
+#ifdef BENCH_ONE
+    std::cout << string_length << "," << mine << std::endl;
 #else
-    std::cout << "Degree: " << degree << std::endl;
-    eval(in_str, key, &res, degree);
-    eval_ntl(in_zz, key_zz, res_zz, degree);
+    std::cout << _PI << ","  << _THETA << "," << _L << "," << _UNROLL << "," << _SIMD << "," << degree << "," << string_length << "," << mine << "," << _CPI << "," << cpi << "," << cpi - _CPI << "," << err << "," << (double)(cpi - _CPI) / std::max(1,_UNROLL-1)  << std::endl;
 #endif
-
     for (int i = 0; i < _L; i++){
         oracle.x[i] = *res_zz % (1L << _BIG);
         *res_zz >>= _BIG;
@@ -127,5 +139,29 @@ int main(int argc, char* argv[]){
         std::cerr << "Results do not match" << std::endl;
         return 1;
     }
+#else
+    std::cout << _PI << "," << _THETA << ", Degree: " << degree << std::endl;
+    for(int seed = 0; seed < 1000; seed++){
+        ZZ key_zz = initialize(degree, in_str, in_zz, in, seed);
+        ZZ key_ntl = key_zz;
+        bigint key;
+        for (int i = 0; i < _L; i++){
+            key.x[i] = key_ntl % (1L << _BIG);
+            key_ntl >>= _BIG;
+        }
+        eval(in_str, key, &res, degree);
+        eval_ntl(in_zz, key_zz, res_zz, degree);
+
+        for (int i = 0; i < _L; i++){
+            oracle.x[i] = *res_zz % (1L << _BIG);
+            *res_zz >>= _BIG;
+        }
+    
+        if (!equal(&res, &oracle)){
+            std::cerr << "Results do not match: " << seed<< std::endl;
+            return 1;
+        }
+    }
+#endif
     return 0;
 }
