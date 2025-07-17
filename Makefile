@@ -21,6 +21,11 @@ bin:
 generate: src/main.cpp
 	python3 gen.py -p $(PI) -t $(THETA) -s $(SIMD) -u $(UNROLL) -pr $(OPTIONS)
 
+generate_jasmin: src/main.cpp
+	python3 gen.py -p $(PI) -t $(THETA) -s $(SIMD) -u $(UNROLL) -pr $(OPTIONS) -j
+	# jasminc -checksafety src/library.jazz
+	jasminc -pasm src/library.jazz > src/library.s
+
 verify: bin generate src/main.cpp
 	python src/verify1.py
 
@@ -38,6 +43,13 @@ test: bin generate src/main.cpp
         ./bin/test $$number; \
     done \
 
+test_jasmin: bin generate_jasmin src/main.cpp src/library.s
+	@g++ src/main.cpp src/library.s -o bin/test_jasmin $(TEST_FLAGS) -DTEST; \
+	python src/verify1.py;\
+	for number in `seq $(LOWER) $(UPPER)`; do \
+        ./bin/test_jasmin $$number; \
+    done \
+
 test_batch: bin src/main.cpp
 	@pis=`echo $(PIs)`; \
 	thetas=`echo $(THETAs)`; \
@@ -51,6 +63,19 @@ test_batch: bin src/main.cpp
 		./bin/test 128; \
 	done
 
+test_batch_jasmin: bin src/main.cpp 
+	@pis=`echo $(PIs)`; \
+	thetas=`echo $(THETAs)`; \
+	length=`echo $$pis | wc -w`; \
+	for i in `seq 1 $$length`; do \
+		pi=`echo $$pis | cut -d ' ' -f $$i`; \
+		theta=`echo $$thetas | cut -d ' ' -f $$i`; \
+		python gen.py -p $$pi -t $$theta -s $(SIMD) -u $(UNROLL) $(OPTIONS) -j; \
+		jasminc -pasm src/library.jazz > src/library.s; \
+		g++ src/main.cpp src/library.s -o bin/test_jasmin $(TEST_FLAGS) -DTEST; \
+		./bin/test_jasmin 128; \
+	done
+
 plot: bin src/main.cpp
 	@pis=`echo $(PIs)`; \
 	thetas=`echo $(THETAs)`; \
@@ -61,6 +86,19 @@ plot: bin src/main.cpp
 		python gen.py -p $$pi -t $$theta -s $(SIMD) -u $(UNROLL) $(OPTIONS); \
 		g++ src/main.cpp -o bin/plot $(FLAGS) -DPLOT; \
 		./bin/plot $$(( 800 + $(SIMD) )); \
+	done
+
+plot_jasmin: bin src/main.cpp
+	@pis=`echo $(PIs)`; \
+	thetas=`echo $(THETAs)`; \
+	length=`echo $$pis | wc -w`; \
+	for i in `seq 1 $$length`; do \
+		pi=`echo $$pis | cut -d ' ' -f $$i`; \
+		theta=`echo $$thetas | cut -d ' ' -f $$i`; \
+		python gen.py -p $$pi -t $$theta -s $(SIMD) -u $(UNROLL) $(OPTIONS) -j; \
+		jasminc -pasm src/library.jazz > src/library.s; \
+		g++ src/main.cpp src/library.s -o bin/plot_jasmin $(FLAGS) -DPLOT; \
+		./bin/plot_jasmin $$(( 800 + $(SIMD) )); \
 	done
 
 bench_one: bin src/main.cpp
@@ -93,9 +131,18 @@ bench_openssl: ./others/benchmark_openssl.cpp
 bench_one_inc: bin src/main.cpp
 	@echo "bytes,cycles"
 	@python gen.py -p $(PI) -t $(THETA) -s $(SIMD) -u $(UNROLL) $(OPTIONS); 
+	@g++ src/main.cpp -o bin/bench $(FLAGS) -DBENCH_ONE;
 	@for len in $(shell seq 8 32 1600); do \
-		g++ src/main.cpp -o bin/bench $(FLAGS) -DBENCH_ONE; \
 		./bin/bench $$len; \
+	done
+
+bench_one_inc_jasmin: bin src/main.cpp
+	@echo "bytes,cycles"
+	@python gen.py -p $(PI) -t $(THETA) -s $(SIMD) -u $(UNROLL) $(OPTIONS) -j; 
+	@jasminc -pasm src/library.jazz > src/library.s; 
+	@g++ src/main.cpp src/library.s -o bin/bench_jasmin $(FLAGS) -DBENCH_ONE; 
+	@for len in $(shell seq 8 32 1600); do \
+		./bin/bench_jasmin $$len; \
 	done
 
 

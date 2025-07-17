@@ -1,0 +1,46 @@
+{# ./templates/main.j2 #}
+
+{% if jasmin -%}
+
+extern "C" __m256i* unrolled(__m256i* C, __m256i* K, unsigned char* b, __m256i bigv_mask,  __m256i smallv_mask, __m256i gather_small_mask, __m256i or_mask);
+extern "C" __m256i* cleanup(__m256i* C, __m256i* K, unsigned char* b, __m256i bigv_mask,  __m256i smallv_mask, __m256i gather_small_mask, __m256i or_mask);
+
+#define UNROLLED(ACC, TMP, KM, in, cur) unrolled(TMP.x, KM[0].x, in + cur * _BLOCK, bigv_mask, smallv_mask, gather_small_mask, or_mask);
+
+#define CLEANUP(ACC, TMP, KM, in, cur) cleanup(TMP.x, KM[0].x, in + cur * _BLOCK, bigv_mask, smallv_mask, gather_small_mask, or_mask);
+
+{% else %}
+
+#define UNROLLED(ACC, TMP, KM, in, cur)\
+    {% if ifma or karatsuba -%}
+    ZEROACC(ACC)\
+    {% endif -%}
+    MATMUL_FIRST(ACC, TMP, KM[_UNROLL-1]);\
+    GATHER(TMP, in + cur * _BLOCK);\
+    {% for i in range(unroll-1) -%}
+    MATMUL(ACC, TMP, KM[_UNROLL-{{2+i}}]); \
+    GATHER(TMP, in + (cur + {{i+1}}*_SIMD) * _BLOCK);\
+    {% endfor -%}
+    {% if ifma -%}
+    ELEMENTWISE_ADD(ACC, TMP);\
+    CARRY_ROUND(TMP, ACC);\
+    {% else -%}
+    ELEMENTWISE_ADD(TMP, ACC);\
+    CARRY_ROUND(TMP);\
+    {% endif %}
+
+#define CLEANUP(ACC, TMP, KM, in, cur)\
+    {% if ifma or karatsuba -%}
+    ZEROACC(ACC)\
+    {% endif -%}
+    MATMUL_FIRST(ACC, TMP, KM[0]);\
+    GATHER(TMP, in + cur * _BLOCK);\
+    {% if ifma -%}
+    ELEMENTWISE_ADD(ACC, TMP);\
+    CARRY_ROUND(TMP, ACC);\
+    {% else -%}
+    ELEMENTWISE_ADD(TMP, ACC);\
+    CARRY_ROUND(TMP);\
+    {% endif -%}
+
+{% endif %}

@@ -1,0 +1,122 @@
+{# ./templates/scalar.j2 #}
+
+{% if jasmin != 2 -%}
+
+void string_to_bigint(unsigned char* in, bigint* out){
+    int mask_start = 255;
+    int shift_start = 0;
+    int cur = 0, remaining = _BIG, done = 0;
+    for(int i = 0; i < _L; i++){
+        out->x[i] = (in[cur] & mask_start) >> shift_start;
+        cur++; remaining -= (8 - shift_start); done+=(8 - shift_start);
+        while (remaining >= 8){
+            out->x[i] |= in[cur] << done;
+            done += 8; remaining -= 8; cur++;
+        }
+        if (remaining < 8){
+            out->x[i] |= (in[cur] & ((1<<remaining)-1)) << done;
+            mask_start = (255 - ((1<<remaining)-1));
+            shift_start = remaining;
+            done = 0; remaining = _BIG;
+        }
+    }
+}
+
+bool equal(bigint* a, bigint* b){
+    for (int i = 0; i < _L; i++){
+        if (a->x[i] != b->x[i]){
+            return false;
+        }
+    }
+    return true;
+}
+
+static inline __attribute__((always_inline))
+void mul(bigint* a, bigint* b, bigint* res){
+    {% for i in range(l) -%}
+    res->x[{{i}}] = 0;
+    {% endfor %}
+    {% for i in range(l) -%}
+    {% for j in range(i+1) -%}
+    res->x[{{i}}] += a->x[{{j}}] * b->x[{{i - j}}];
+    {% endfor -%}    
+    {% for j in range(i+1,l) -%}
+    res->x[{{i}}] += a->x[{{j}}] * _KAPPA * b->x[{{l - j + i}}];
+    {% endfor -%}
+    {% endfor -%}
+}
+
+static inline __attribute__((always_inline))
+void add(bigint* a, bigint* b){
+    {% for i in range(l) -%}
+    a->x[{{i}}] += b->x[{{i}}];
+    {% endfor -%}
+}
+
+static inline __attribute__((always_inline))
+void copy(bigint* a, bigint* b){
+    for (int i = 0; i < _L; i++){
+        a->x[i] = b->x[i];
+    }
+}
+
+static inline __attribute__((always_inline))
+void fmadd(bigint* a, bigint* b, bigint* c){
+    {% for i in range(l) -%}
+    {% for j in range(i+1) -%}
+    c->x[{{i}}] += a->x[{{j}}] * b->x[{{i - j}}];
+    {% endfor -%}    
+    {% for j in range(i+1,l) -%}
+    c->x[{{i}}] += a->x[{{j}}] * _KAPPA * b->x[{{l - j + i}}];
+    {% endfor -%}
+    {% endfor -%}
+}
+
+void carry_round(bigint* a){
+    for (int i = 0; i < _L - 1; i++){
+        a->x[i + 1] += a->x[i] >> _BIG;
+        a->x[i] &= (1L << _BIG) - 1;
+    }
+    a->x[0] += (a->x[_L - 1] >> _SMALL) * _THETA;
+    a->x[_L - 1] &= (1L << _SMALL) - 1;
+    a->x[1] += a->x[0] >> _BIG;
+    a->x[0] &= (1L << _BIG) - 1;
+    a->x[2] += a->x[1] >> _BIG;
+    a->x[1] &= (1L << _BIG) - 1;
+}
+
+void finalize(bigint *res, ull* FIN, bigint* KS){
+    bigint temp[_SIMD-1];
+
+    for(int i = 0; i < _SIMD-1; i++){
+        for(int j = 0; j < _L; j++){
+            temp[i].x[j] = FIN[j * _SIMD + i];
+        }
+    }
+    for(int j = 0; j < _L; j++){
+        res->x[j] = FIN[j * _SIMD + _SIMD - 1];
+    }
+    for(int i = 0; i < _SIMD-1; i++){
+        fmadd(&temp[i], &KS[_SIMD-2-i], res);
+        carry_round(res);
+    }
+}
+
+void load_scalar(bigint* out, unsigned char* in){
+    #pragma unroll
+    for (int i = 0; i < _L; i++)
+        out->x[i] = *(ull*)(in + (i * _BIG >> 3));
+
+    #pragma unroll
+    for (int i = 0; i < _L; i++)
+        out->x[i] >>= (i * _BIG) % 8;
+
+    #pragma unroll
+    for (int i = 0; i < _L - 1; i++)
+        out->x[i] &= _BIG_MASK;
+
+    out->x[_L-1] &= SMALLR_MASK;
+    out->x[_L-1] |= (1ull << SMALLR);
+}
+
+{% endif -%}

@@ -1,0 +1,64 @@
+{# ./templates/structs.j2 #}
+
+{% if jasmin != 2 -%}
+
+typedef union  bbigint
+{
+    vtype x[_L];
+    unsigned long a[_SIMD * _L];
+} bbigint;
+
+typedef union  bkey
+{
+    vtype x[_LKEY];
+    unsigned long a[_SIMD * ({{"_L + _L - 1" if not karatsuba else "_L"}})];
+} bkey;
+
+
+{% if ifma -%}
+{% if karatsuba %}
+typedef struct bacc
+{
+    vtype z0[{{2*(2*ceil(l/2)-1)}}]; // < _L lo, >=_L hi
+    vtype z3[{{2*(2*ceil(l/2)-1)}}]; // < _L lo, >=_L hi
+    vtype z2[{{2*(2*floor(l/2)-1)}}]; // < _L lo, >=_L hi
+    vtype x[{{2*l}}];
+    unsigned long a[_SIMD * (2*_LACC)];
+} bacc;
+{% else %}
+typedef union  bacc
+{
+    vtype x[2*_LACC]; // < _L lo, >=_L hi
+    unsigned long a[_SIMD * (2*_LACC)];
+} bacc;
+{% endif %}
+
+typedef struct bigint { __int128 x[_L]; } bigint;
+typedef __int128 ull;
+
+{% else -%}
+
+{% if karatsuba %}
+
+typedef struct
+{
+    vtype z0[{{2*ceil(l/2)-1}}];
+    vtype z2[{{2*floor(l/2)-1}}];
+    vtype z3[{{2*ceil(l/2)-1}}];
+} bacc;
+
+{% else %}
+
+typedef union  bacc
+{
+    vtype x[_LACC];
+    unsigned long a[_SIMD * (2*_L-1)];
+} bacc;
+
+{% endif %}
+
+typedef struct bigint { unsigned long long x[_L]; } bigint;
+typedef unsigned long long int ull;
+{% endif -%}
+
+{% endif -%}

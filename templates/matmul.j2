@@ -1,0 +1,226 @@
+{# ./templates/matmul.j2 #}
+
+{% if jasmin -%}
+
+//extern "C" __m256i* matmul(__m256i* C, __m256i* A, __m256i* K);
+//extern "C" __m256i* matmul_first(__m256i* C, __m256i* A, __m256i* K);
+
+#//define MATMUL(C, A, K, first) first ? matmul_first(C.x, A.x, K.x) : matmul(C.x, A.x, K.x);
+
+{% else %}
+
+{% if ifma %}
+
+{% if karatsuba %}
+
+#define MATMUL(C, A, K, first) \
+    { \
+    bkey KT; \
+    {% for k in range(l) -%}
+    {%- for i in range(ceil(l/2)) -%}
+    {%- for j in range(ceil(l/2)) -%}
+    {%- if i + j == k -%}
+    VFMA(C.z0[{{k}}], C.z0[{{k+(2*ceil(l/2)-1)}}], A.x[{{i}}], K.x[{{j}}]); \
+    {% endif -%}
+    {% endfor -%}
+    {%- endfor -%}
+    {% endfor -%}
+    {% for k in range(l) -%}
+    {%- for i in range(floor(l/2)) -%}
+    {%- for j in range(floor(l/2)) -%}
+    {%- if i + j == k -%}
+    VFMA(C.z2[{{k}}], C.z2[{{k+(2*floor(l/2)-1)}}], A.x[{{i+ceil(l/2)}}], K.x[{{j+ceil(l/2)}}]); \
+    {% endif -%}
+    {% endfor -%}
+    {%- endfor -%}
+    {% endfor -%}
+    {%- for i in range(floor(l/2)) -%}
+    A.x[{{i}}] = VADD(A.x[{{i}}], A.x[{{ceil(l/2) + i}}]); \
+    {% endfor -%}
+    {%- for i in range(floor(l/2)) -%}
+    KT.x[{{i}}] = VADD(K.x[{{i}}], K.x[{{ceil(l/2) + i}}]); \
+    {% endfor -%}
+    {%- if l % 2 == 1 -%}
+    KT.x[{{floor(l/2)}}] = K.x[{{floor(l/2)}}]; \
+    {% endif -%}
+    {# compute z3 -#}
+    {% for k in range(l) -%}
+    {%- for i in range(ceil(l/2)) -%}
+    {%- for j in range(ceil(l/2)) -%}
+    {%- if i + j == k -%}
+    VFMA(C.z3[{{k}}], C.z3[{{k+(2*ceil(l/2)-1)}}], A.x[{{i}}], KT.x[{{j}}]); \
+    {% endif -%}
+    {% endfor -%}
+    {%- endfor -%}
+    {% endfor -%}
+    }
+
+{% else %}
+
+// (C, A, K) => C += A * K
+#define MATMUL(C, A, K) /* @SPHVerify: func matmul(C, A, K)  */\
+    /* @SPHVerify: pre C = [sp.Matrix([sp.symbols(f'c_{i}_{j}') for j in range({{simd_size}})]) for i in range({{2*l}})]*/\
+    /* @SPHVerify: pre A = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre K = sp.Matrix([sp.symbols(f'K_{ {{l-1}}-i }') if i < {{l}} else sp.symbols(f'K_{ {{2*l-1}}-i }') * {{kappa}} for i in range({{2*l-1}})])*/\ 
+    /* @SPHVerify: pre CM = sp.Matrix([C[i] for i in range({{2*l}})]).reshape({{2*l}}, {{simd_size}})  */\
+    /* @SPHVerify: post AO = sp.Matrix([A[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post CLO = sp.Matrix([C[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post CHI = sp.Matrix([C[i+{{l}}] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post KM = sp.Matrix([[sp.symbols(f'K_{i-j}') for j in range(i+1)] + [{{kappa}} * sp.symbols(f'K_{ {{l}}-j+i}') for j in range(i+1, {{l}})] for i in range({{l}})])  */\
+    /* @SPHVerify: post THI = CM[{{l}}:,:] + (KM * AO) * sp.Rational(1, 2**52) */\
+    /* @SPHVerify: post TLO = CM[:{{l}},:] + (KM * AO) */\
+    /* @SPHVerify: post assert THI == CHI  */\
+    /* @SPHVerify: post assert TLO == CLO  */\
+    {% for i in range(l) -%}
+    {%- for j in range(l) -%}
+    C.x[{{i+l}}] = VFMAHI(C.x[{{i+l}}], A.x[{{j}}], K.x[{{l - 1 - i + j}}]); \
+    C.x[{{i}}] = VFMALO(C.x[{{i}}], A.x[{{j}}], K.x[{{l - 1 - i + j}}]); \
+    {% endfor -%}
+    {% endfor %}
+    /* @SPHVerify: endfunc matmul  */
+
+#define MATMUL_FIRST(C, A, K) MATMUL(C, A, K); 
+
+{% endif %}
+    
+{% else %}
+
+{% if karatsuba %}
+
+#define MATMUL(C, A, K, first) \
+    { \
+    bkey KT; \
+    {% for k in range(l) -%}
+    {%- for i in range(ceil(l/2)) -%}
+    {%- for j in range(ceil(l/2)) -%}
+    {%- if i + j == k -%}
+    C.z0[{{k}}] = VFMA(C.z0[{{k}}], A.x[{{i}}], K.x[{{j}}]); \
+    {% endif -%}
+    {% endfor -%}
+    {%- endfor -%}
+    {% endfor -%}
+    {% for k in range(l) -%}
+    {%- for i in range(floor(l/2)) -%}
+    {%- for j in range(floor(l/2)) -%}
+    {%- if i + j == k -%}
+    C.z2[{{k}}] = VFMA(C.z2[{{k}}], A.x[{{i+ceil(l/2)}}], K.x[{{j+ceil(l/2)}}]); \
+    {% endif -%}
+    {% endfor -%}
+    {%- endfor -%}
+    {% endfor -%}
+    {%- for i in range(floor(l/2)) -%}
+    A.x[{{i}}] = VADD(A.x[{{i}}], A.x[{{ceil(l/2) + i}}]); \
+    {% endfor -%}
+    {%- for i in range(floor(l/2)) -%}
+    KT.x[{{i}}] = VADD(K.x[{{i}}], K.x[{{ceil(l/2) + i}}]); \
+    {% endfor -%}
+    {%- if l % 2 == 1 -%}
+    KT.x[{{floor(l/2)}}] = K.x[{{floor(l/2)}}]; \
+    {% endif -%}
+    {# compute z3 -#}
+    {% for k in range(l) -%}
+    {%- for i in range(ceil(l/2)) -%}
+    {%- for j in range(ceil(l/2)) -%}
+    {%- if i + j == k -%}
+    C.z3[{{k}}] = VFMA(C.z3[{{k}}], A.x[{{i}}], KT.x[{{j}}]); \
+    {% endif -%}
+    {% endfor -%}
+    {%- endfor -%}
+    {% endfor -%}
+    }
+
+{% else %}
+
+#define MATMUL_FIRST(C, A, K) /* @SPHVerify: func matmul_first(C, A, K)  */\
+    /* @SPHVerify: pre C = [sp.Matrix([0 for j in range({{simd_size}})]) for i in range({{l}})]*/\
+    /* @SPHVerify: pre A = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre K = sp.Matrix([sp.symbols(f'K_{ {{l-1}}-i }') if i < {{l}} else sp.symbols(f'K_{ {{2*l-1}}-i }') * {{kappa}} for i in range({{2*l-1}})])*/\ 
+    /* @SPHVerify: post AO = sp.Matrix([A[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post CO = sp.Matrix([C[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post KM = sp.Matrix([[sp.symbols(f'K_{i-j}') for j in range(i+1)] + [{{kappa}} * sp.symbols(f'K_{ {{l}}-j+i}') for j in range(i+1, {{l}})] for i in range({{l}})])  */\
+    /* @SPHVerify: post T = KM * AO  */\
+    /* @SPHVerify: post assert T == CO  */\
+    {% for i in range(l) -%}
+    {%- for j in range(l) -%}
+    {% if j == 0 -%}
+    C.x[{{i}}] = VMUL(A.x[{{j}}], K.x[{{l - 1 - i + j}}]); \
+    {%- else -%}
+    C.x[{{i}}] = VFMA(C.x[{{i}}], A.x[{{j}}], K.x[{{l - 1 - i + j}}]); \
+    {%- endif %}
+    {% endfor -%}
+    {% endfor -%}
+    /* @SPHVerify: endfunc matmul_first  */
+
+#define MATMUL(C, A, K) /* @SPHVerify: func matmul(C, A, K)  */\
+    /* @SPHVerify: pre C = [sp.Matrix([sp.symbols(f'c_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\
+    /* @SPHVerify: pre A = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre K = sp.Matrix([sp.symbols(f'K_{ {{l-1}}-i }') if i < {{l}} else sp.symbols(f'K_{ {{2*l-1}}-i }') * {{kappa}} for i in range({{2*l-1}})])*/\ 
+    /* @SPHVerify: pre CM = sp.Matrix([C[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post AO = sp.Matrix([A[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post CO = sp.Matrix([C[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post KM = sp.Matrix([[sp.symbols(f'K_{i-j}') for j in range(i+1)] + [{{kappa}} * sp.symbols(f'K_{ {{l}}-j+i}') for j in range(i+1, {{l}})] for i in range({{l}})])  */\
+    /* @SPHVerify: post T = CM + KM * AO  */\
+    /* @SPHVerify: post assert T == CO  */\
+    {% for i in range(l) -%}
+    {%- for j in range(l) -%}
+    C.x[{{i}}] = VFMA(C.x[{{i}}], A.x[{{j}}], K.x[{{l - 1 - i + j}}]); \
+    {% endfor -%}
+    {% endfor -%}
+    /* @SPHVerify: endfunc matmul  */
+    
+{% endif %}
+{% endif %}
+
+{% if not ifma %}
+#define MATMUL_NOPRE_FIRST(C, A, K) /* @SPHVerify: func matmul_nopre_first(C, A, K)  */\
+    /* @SPHVerify: pre C = [sp.Matrix([0 for j in range({{simd_size}})]) for i in range({{l}})]*/\
+    /* @SPHVerify: pre A = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre K = sp.Matrix([sp.symbols(f'K_{i}') for i in range({{l}})])*/\ 
+    /* @SPHVerify: post AO = sp.Matrix([A[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post CO = sp.Matrix([C[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post KM = sp.Matrix([[sp.symbols(f'K_{i-j}') for j in range(i+1)] + [{{kappa}} * sp.symbols(f'K_{ {{l}}-j+i}') for j in range(i+1, {{l}})] for i in range({{l}})])  */\
+    /* @SPHVerify: post T = KM * AO  */\
+    /* @SPHVerify: post assert T == CO  */\
+    {% for i in range(l) -%}
+    {% for j in range(i+1) -%}
+    {% if j == 0 -%}
+    C.x[{{i}}] = VMUL(A.x[{{j}}], K.x[{{i - j}}]);\
+    {%- else -%}
+    C.x[{{i}}] = VFMA(C.x[{{i}}], A.x[{{j}}], K.x[{{i - j}}]);\
+    {%- endif %}
+    {% endfor -%}        
+    {%- for j in range(i+1, l) -%}
+    C.x[{{i}}] = VFMA(C.x[{{i}}], A.x[{{j}}], MULT_KAPPA(K.x[{{l-j+i}}]));\
+    {% endfor -%}        
+    {% endfor -%} 
+    /* @SPHVerify: endfunc matmul_nopre_first  */
+
+
+// TODO need to add overflow check
+
+#define MATMUL_NOPRE(C, A, K) /* @SPHVerify: func matmul_nopre(C, A, K)  */\
+    /* @SPHVerify: pre C = [sp.Matrix([sp.symbols(f'c_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\
+    /* @SPHVerify: pre A = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre K = sp.Matrix([sp.symbols(f'K_{i}') for i in range({{l}})])*/\ 
+    /* @SPHVerify: pre CM = sp.Matrix([C[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post AO = sp.Matrix([A[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post CO = sp.Matrix([C[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post KM = sp.Matrix([[sp.symbols(f'K_{i-j}') for j in range(i+1)] + [{{kappa}} * sp.symbols(f'K_{ {{l}}-j+i}') for j in range(i+1, {{l}})] for i in range({{l}})])  */\
+    /* @SPHVerify: post T = CM + KM * AO  */\
+    /* @SPHVerify: post assert T == CO  */\
+    {% for i in range(l) -%}
+    {% for j in range(i+1) -%}
+    {% if j == 0 -%}
+    C.x[{{i}}] = VFMA(C.x[{{i}}], A.x[{{j}}], K.x[{{i - j}}]);\
+    {%- else -%}
+    C.x[{{i}}] = VFMA(C.x[{{i}}], A.x[{{j}}], K.x[{{i - j}}]);\
+    {%- endif %}
+    {% endfor -%}        
+    {%- for j in range(i+1, l) -%}
+    C.x[{{i}}] = VFMA(C.x[{{i}}], A.x[{{j}}], MULT_KAPPA(K.x[{{l-j+i}}]));\
+    {% endfor -%}        
+    {% endfor -%}   
+    /* @SPHVerify: endfunc matmul_nopre  */
+{% endif %}
+
+{% endif %}

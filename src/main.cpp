@@ -99,8 +99,8 @@ int main(int argc, char* argv[]){
     
     
     int string_length = degree * _BLOCK;   
-
-    unsigned char* in_str = (unsigned char*)malloc(string_length);
+    int padding = _BLOCK;
+    unsigned char* in_str = (unsigned char*)malloc(string_length + padding);
 
     bigint* in = (bigint*)malloc(degree * sizeof(bigint));
     ZZ* in_zz = (ZZ*)malloc(degree * sizeof(ZZ));

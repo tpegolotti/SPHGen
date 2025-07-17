@@ -1,0 +1,118 @@
+{# ./templates/carry.j2 #}
+
+{% if jasmin -%}
+
+extern "C" __m256i* carry(__m256i* A, __m256i bigv_mask, __m256i smallv_mask);
+#define CARRY_ROUND(A) carry(A.x, bigv_mask, smallv_mask);
+
+{% else %}
+{%- if ifma %}
+
+#define GET_CARRY(lo, hi, SHIFT) \
+    VADD(VSRLI(lo, SHIFT), VSLLI(hi, 52 - SHIFT))
+
+// using functions would require having a language for the verifier and i would rather not
+#define CARRY_ROUND(out, A) /* @SPHVerify: func carry_round  */\
+    /* @SPHVerify: pre A = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{2*l}})]*/\ 
+    /* @SPHVerify: pre AA = sp.Matrix([sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{2*l}})]).reshape({{2*l}},{{simd_size}})*/\ 
+    /* @SPHVerify: pre out = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre _BIG = {{big}} */\
+    /* @SPHVerify: pre bigv_mask = {{2 ** big}} */\
+    /* @SPHVerify: pre _SMALL = {{small}} */\
+    /* @SPHVerify: pre smallv_mask = {{2 ** small}} */\
+    /* @SPHVerify: post I = (sp.eye({{2*l}})) */\
+    /* @SPHVerify: post O = (I) */\
+    /* @SPHVerify: post for i in range({{l-1}}): */\
+    /* @SPHVerify: post ->P = sp.zeros({{2*l}}, {{2*l}}) */\
+    /* @SPHVerify: post ->P[{{l-1}}-i,{{l-2}}-i] = sp.Rational(1,{{(2 ** big)}}) */\
+    /* @SPHVerify: post ->P[{{l-1}}-i,{{l+l-2}}-i] = {{(2**(52-big))}} */\
+    /* @SPHVerify: post ->O = O @ (I + P) */\
+    /* @SPHVerify: post O = O @ AA */\
+    /* @SPHVerify: post for i in range({{l-1}}):
+    /* @SPHVerify: post ->O[i, :] = O[i, :] % {{2 ** big}}
+    /* @SPHVerify: post P = sp.zeros({{2*l}}, {{2*l}}) */\
+    /* @SPHVerify: post P[0,{{l-1}}] = sp.Rational({{theta}},{{(2 ** small)}}) */\
+    /* @SPHVerify: post P[0,{{l+l-1}}] = {{theta}} * {{2**(52-small)}} */\
+    /* @SPHVerify: post S = (I + P) */\
+    /* @SPHVerify: post O = S @ O */\
+    /* @SPHVerify: post for i in [{{l-1}}]:
+    /* @SPHVerify: post ->O[i, :] = O[i, :] % {{2 ** small}}
+    /* @SPHVerify: post S = (I) */\
+    /* @SPHVerify: post for i in range(2): */\
+    /* @SPHVerify: post ->P = sp.zeros({{2*l}}, {{2*l}}) */\
+    /* @SPHVerify: post ->P[2-i,1-i] = sp.Rational(1,{{(2 ** big)}}) */\
+    /* @SPHVerify: post ->S = S @ (I + P) */\
+    /* @SPHVerify: post O = S @ O */\
+    /* @SPHVerify: post for i in range(2):
+    /* @SPHVerify: post ->O[i, :] = O[i, :] % {{2 ** big}}
+    /* @SPHVerify: post AO = sp.Matrix([out[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}}) */\ 
+    /* @SPHVerify: post assert O[:{{l}},:] == AO */\
+    out.x[1] = VADD(A.x[1], VADD(VSRLI(A.x[0], _BIG), VSLLI(A.x[{{l}}], 52 - _BIG))); \
+    {% for i in range(1, l-1) -%}
+    out.x[{{i+1}}] = VADD(A.x[{{i+1}}], VADD(VSRLI(out.x[{{i}}], _BIG), VSLLI(A.x[{{i+l}}], 52 - _BIG))); \
+    {% endfor -%}
+    out.x[0] = VAND(A.x[0], bigv_mask);\
+    {% for i in range(1, l-1) -%}
+    out.x[{{i}}] = VAND(out.x[{{i}}], bigv_mask);\
+    {% endfor -%}
+    last_shift = VADD(VSRLI(out.x[{{l-1}}], _SMALL), VSLLI(A.x[{{l-1+l}}], 52 - _SMALL)); \
+    out.x[0] = VADD(out.x[0], MULT_THETA(last_shift)); \
+    out.x[{{l-1}}] = VAND(out.x[{{l-1}}], smallv_mask); \
+    out.x[1] = VADD(out.x[1], VSRLI(out.x[0], _BIG)); \
+    out.x[2] = VADD(out.x[2], VSRLI(out.x[1], _BIG)); \
+    out.x[0] = VAND(out.x[0], bigv_mask);\
+    out.x[1] = VAND(out.x[1], bigv_mask);\
+    /* @SPHVerify: endfunc carry_round  */\
+
+{% else %}
+
+#define GET_CARRY(in, SHIFT) \
+    VSRLI(in, SHIFT)
+
+#define CARRY_ROUND(A) /* @SPHVerify: func carry_round  */\
+    /* @SPHVerify: pre A = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre AA = sp.Matrix([A[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}}) */\ 
+    /* @SPHVerify: pre _BIG = {{big}} */\
+    /* @SPHVerify: pre bigv_mask = {{2 ** big}} */\
+    /* @SPHVerify: pre _SMALL = {{small}} */\
+    /* @SPHVerify: pre smallv_mask = {{2 ** small}} */\
+    /* @SPHVerify: post O = (sp.eye({{l}})) */\
+    /* @SPHVerify: post for i in range({{l-1}}): */\
+    /* @SPHVerify: post -> P = sp.zeros({{l}}, {{l}}) */\
+    /* @SPHVerify: post -> P[{{l-1}}-i,{{l-2}}-i] = sp.Rational(1,{{(2 ** big)}}) */\
+    /* @SPHVerify: post -> O = O @ (sp.eye({{l}}) + P) */\
+    /* @SPHVerify: post O = O @ AA */\
+    /* @SPHVerify: post for i in range({{l-1}}):
+    /* @SPHVerify: post ->O[i, :] = O[i, :] % {{2 ** big}}
+    /* @SPHVerify: post P = sp.zeros({{l}}, {{l}}) */\
+    /* @SPHVerify: post P[0,{{l-1}}] = sp.Rational({{theta}},{{(2 ** small)}}) */\
+    /* @SPHVerify: post S = (sp.eye({{l}}) + P) */\
+    /* @SPHVerify: post O = S @ O */\
+    /* @SPHVerify: post for i in [{{l-1}}]:
+    /* @SPHVerify: post ->O[i, :] = O[i, :] % {{2 ** small}}
+    /* @SPHVerify: post S = (sp.eye({{l}})) */\
+    /* @SPHVerify: post for i in range(2): */\
+    /* @SPHVerify: post -> P = sp.zeros({{l}}, {{l}}) */\
+    /* @SPHVerify: post -> P[2-i,1-i] = sp.Rational(1,{{(2 ** big)}}) */\
+    /* @SPHVerify: post -> S = S @ (sp.eye({{l}}) + P) */\
+    /* @SPHVerify: post O = S @ O */\
+    /* @SPHVerify: post for i in range(2):
+    /* @SPHVerify: post ->O[i, :] = O[i, :] % {{2 ** big}}
+    /* @SPHVerify: post AO = sp.Matrix([A[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}}) */\ 
+    /* @SPHVerify: post assert O == AO */\
+    {% for i in range(l-1) -%}
+    A.x[{{i+1}}] = VADD(A.x[{{i+1}}], GET_CARRY(A.x[{{i}}], _BIG)); \
+    {% endfor -%}
+    {% for i in range(l-1) -%}
+    A.x[{{i}}] = VAND(A.x[{{i}}], bigv_mask);    \
+    {% endfor -%}
+    A.x[0] = VADD(A.x[0], MULT_THETA(GET_CARRY(A.x[{{l-1}}], _SMALL)));    \
+    A.x[{{l-1}}] = VAND(A.x[{{l-1}}], smallv_mask);  \
+    A.x[1] = VADD(A.x[1], GET_CARRY(A.x[0], _BIG)); \
+    A.x[2] = VADD(A.x[2], GET_CARRY(A.x[1], _BIG)); \
+    A.x[0] = VAND(A.x[0], bigv_mask);    \
+    A.x[1] = VAND(A.x[1], bigv_mask);    \
+    /* @SPHVerify: endfunc carry_round  */\
+
+{% endif %}
+{% endif %}

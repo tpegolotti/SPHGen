@@ -1,0 +1,123 @@
+{# ./templates/instructions.j2 #}
+
+{% if simd_size == 4 -%}
+
+#define VMUL(a, b) (_mm256_mul_epu32(a, b))
+#define VADD(a, b) (_mm256_add_epi64(a, b))
+#define VSUB(a, b) (_mm256_sub_epi64(a, b))
+#define VSRLI(a, imm) (_mm256_srli_epi64(a, imm))
+#define VSLLI(a, imm) (_mm256_slli_epi64(a, imm))
+#define VAND(a, b) (_mm256_and_si256(a, b))
+#define VBROADCAST(a) (_mm256_set1_epi64x(a))
+#define VOR(a, b) (_mm256_or_si256(a, b))
+#define VSET(...) (_mm256_set_epi64x(__VA_ARGS__));
+#define VGATHER(addr, op0, op1, op2) _mm256_i64gather_epi64((long long int*)(addr + op0), op1, op2)
+#define VSTORE(op0, op1) _mm256_storeu_si256((vtype*)(op0), op1)
+#define VSETZERO (_mm256_setzero_si256())
+#define VINDEX VSET(3*_BLOCK, 2*_BLOCK, _BLOCK, 0)
+#define PERMUTE(mask, in) (_mm256_permute4x64_epi64(in, mask))
+
+{% else -%}
+
+#define VMUL(a, b) (_mm512_mul_epu32(a, b)) 
+#define VADD(a, b) (_mm512_add_epi64(a, b))
+#define VSUB(a, b) (_mm512_sub_epi64(a, b))
+#define VSRLI(a, imm) (_mm512_srli_epi64(a, imm))
+#define VSLLI(a, imm) (_mm512_slli_epi64(a, imm))
+#define VAND(a, b) (_mm512_and_si512(a, b))
+#define VOR(a, b) (_mm512_or_si512(a, b))
+#define VBROADCAST(a) (_mm512_set1_epi64(a))
+#define VSET(...) (_mm512_set_epi64(__VA_ARGS__));
+#define VGATHER(addr, op0, op1, op2) _mm512_i64gather_epi64(op1, addr + op0, op2)
+#define VSTORE(op0, op1) _mm512_storeu_si512((vtype*)(op0), op1)
+#define VSETZERO (_mm512_setzero_si512())
+#define VINDEX VSET(7*_BLOCK, 6*_BLOCK, 5*_BLOCK, 4*_BLOCK, 3*_BLOCK, 2*_BLOCK, _BLOCK, 0)
+#define PERMUTE(mask, in) (_mm512_permutexvar_epi64(VBROADCAST(mask), in))
+
+{% endif -%}
+
+{% if ifma-%}
+#define VFMA(alo, ahi, b, c) \
+    alo = _mm512_madd52lo_epu64(alo, b, c); \
+    ahi = _mm512_madd52hi_epu64(ahi, b, c);
+
+#define VFMAHI(ahi, b, c) \
+    _mm512_madd52hi_epu64(ahi, b, c);
+
+#define VFMALO(alo, b, c) \
+    _mm512_madd52lo_epu64(alo, b, c); 
+
+
+#define VFMA_MASK(alo, ahi, b, c, mask) \
+    alo = _mm512_mask_madd52lo_epu64(alo, mask, b, c); \
+    ahi = _mm512_mask_madd52hi_epu64(ahi, mask, b, c);
+{%- else -%}
+#define VFMA(a, b, c) \
+    VADD(a, VMUL(b, c))
+{%- endif %}
+
+{% if simd_size == 8 %}
+#define BLEND(A, B, mask) \
+    {%- for i in range(l) %}
+    A.x[{{i}}] = _mm512_mask_blend_epi64(mask, A.x[{{i}}], B.x[{{i}}]); \
+    {%- endfor %}
+
+#define REDUCE(A, res) \
+    {%- for i in range(l) %}
+    res->x[{{i}}] = _mm512_reduce_add_epi64(A.x[{{i}}]); \
+    {%- endfor %}
+{% else %}
+#define BLEND(A, B, mask) \
+    {%- for i in range(l) %}
+    A.x[{{i}}] = _mm256_blend_epi32(A.x[{{i}}], B.x[{{i}}], mask); \
+    {%- endfor %}
+
+#define REDUCE(A, res) \
+    bbigint HI;\
+    {%- for i in range(l) %}
+    HI.x[{{i}}] = _mm256_permute2x128_si256(A.x[{{i}}], A.x[{{i}}], 1);\
+    A.x[{{i}}] = _mm256_hadd_epi32(A.x[{{i}}], HI.x[{{i}}]);\
+    A.x[{{i}}] = _mm256_hadd_epi32(A.x[{{i}}], A.x[{{i}}]);\
+    A.x[{{i}}] = _mm256_hadd_epi32(A.x[{{i}}], A.x[{{i}}]);\
+    res->x[{{i}}] = _mm256_extract_epi32(A.x[{{i}}],0);\
+    {%- endfor %}
+{% endif %}
+
+#define ZERO(out) \
+    {% for i in range(l) -%}
+    out.x[{{i}}] = VSETZERO;\
+    {% endfor %}
+
+{% if karatsuba %}
+{% if ifma %}
+#define ZEROACC(out) \
+    {% for i in range(2*(2*ceil(l/2)-1)) -%}
+    out.z0[{{i}}] = VSETZERO;\
+    {% endfor -%}
+    {% for i in range(2*(2*ceil(l/2)-1)) -%}
+    out.z3[{{i}}] = VSETZERO;\
+    {% endfor -%}
+    {% for i in range(2*(2*floor(l/2)-1)) -%}
+    out.z2[{{i}}] = VSETZERO;\
+    {% endfor -%}
+    {% for i in range(2*l) -%}
+    out.x[{{i}}] = VSETZERO;\
+    {% endfor %}
+{% else %}
+#define ZEROACC(out) \
+    {% for i in range(2*ceil(l/2)-1) -%}
+    out.z0[{{i}}] = VSETZERO;\
+    {% endfor -%}
+    {% for i in range(2*ceil(l/2)-1) -%}
+    out.z3[{{i}}] = VSETZERO;\
+    {% endfor -%}
+    {% for i in range(2*floor(l/2)-1) -%}
+    out.z2[{{i}}] = VSETZERO;\
+    {% endfor %}
+{% endif %}
+{% else %}
+#define ZEROACC(out) \
+    {% for i in range((l+((l-1)*karatsuba))*(2 if ifma else 1)) -%}
+    out.x[{{i}}] = VSETZERO;\
+    {% endfor %}
+{% endif %}

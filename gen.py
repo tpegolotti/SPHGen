@@ -94,9 +94,8 @@ def model(l, theta, unroll, simd_size, ifma, kara):
 def shift_right(x, n):
     return x >> n
 
-def gen(pi, theta, avx_512_ifma, simd_size, max_unroll, toprint, karatsuba, norun):
+def gen(pi, theta, avx_512_ifma, simd_size, max_unroll, toprint, karatsuba, norun, jasmin):
     environment = Environment(loader=FileSystemLoader("./templates"))
-    template = environment.get_template("library.template")
     block_size, l, big, small, kappa, unroll, pib, smallR = get_parameters(pi, theta, simd_size, avx_512_ifma, limit_unroll=max_unroll, kara=karatsuba)
     cpi = model(l, theta, unroll, simd_size, avx_512_ifma, karatsuba)
     if norun:
@@ -104,6 +103,37 @@ def gen(pi, theta, avx_512_ifma, simd_size, max_unroll, toprint, karatsuba, noru
         return
     if toprint:
         print(f"pi: {pi}, pi: {pib}, theta: {theta}, block_size: {block_size}, l: {l}, big: {big}, small: {small}, kappa: {kappa}, unroll: {unroll}, cpi: {cpi}")
+
+    if jasmin:
+        jasmin_template = environment.get_template("jasmin.j2")
+        jasmin_content = jasmin_template.render(
+            zip=zip,
+            range=range,
+            enumerate=enumerate,
+            bin=bin,
+            reversed=reversed,
+            theta=theta,
+            pi=pi,
+            l=l,
+            big=big,
+            small=small,
+            kappa=kappa,
+            block_size=block_size,
+            unroll=unroll,
+            simd_size=simd_size,
+            smallR=smallR,
+            shift_right=shift_right,
+            cpi=cpi,
+            ceil=math.ceil,
+            floor=math.floor,
+            max=max,
+            karatsuba=karatsuba
+        )
+
+        with open("src/library.jazz", mode="w", encoding="utf-8") as message:
+            message.write(jasmin_content)
+
+    template = environment.get_template("library.j2")
     content = template.render(
         zip=zip,
         range=range,
@@ -126,7 +156,9 @@ def gen(pi, theta, avx_512_ifma, simd_size, max_unroll, toprint, karatsuba, noru
         cpi=cpi,
         ceil=math.ceil,
         floor=math.floor,
-        karatsuba=karatsuba
+        max=max,
+        karatsuba=karatsuba,
+        jasmin=jasmin
     )
 
     with open("src/library.h", mode="w", encoding="utf-8") as message:
@@ -139,6 +171,7 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--simd", default=4, type=int, required=True)
     parser.add_argument("-u", "--unroll", default=-1, type=int, required=False)
     parser.add_argument("-k", "--karatsuba", default=False, action="store_true")
+    parser.add_argument("-j", "--jasmin", default=False, action="store_true")
     parser.add_argument("-pr", "--print", default=False, \
                         help="Print generated code", action="store_true")
     parser.add_argument("-m", "--madd", default=False, \
@@ -147,4 +180,4 @@ if __name__ == "__main__":
                         help="Do not run the code", action="store_true")
     args = parser.parse_args()
 
-    gen(args.pi, args.theta, args.madd, args.simd, args.unroll, args.print, args.karatsuba, args.no_run)
+    gen(args.pi, args.theta, args.madd, args.simd, args.unroll, args.print, args.karatsuba, args.no_run, args.jasmin)

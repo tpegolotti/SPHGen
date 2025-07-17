@@ -1,0 +1,364 @@
+{# ./templates/jasmin.j2 #}
+
+inline
+fn VMUL(reg u256 a, reg u256 b) -> reg u256 {
+    reg u256 res;
+    res = #VPMULU_256(a, b);
+    return res;
+}
+
+inline
+fn VADD(reg u256 a, reg u256 b) -> reg u256 {
+    reg u256 res;
+    res = #VPADD_4u64(a, b);
+    return res;
+}
+
+inline
+fn VSUB(reg u256 a, reg u256 b) -> reg u256 {
+    reg u256 res;
+    res = #VPSUB_4u64(a, b);
+    return res;
+}
+
+inline
+fn VSRLI(reg u256 a, inline int b) -> reg u256 {
+    reg u256 res;
+    res = #VPSRL_4u64(a, b);
+    return res;
+}
+
+inline
+fn VSLLI(reg u256 a, inline int b) -> reg u256 {
+    reg u256 res;
+    res = #VPSLL_4u64(a, b);
+    return res;
+}
+
+inline
+fn VAND(reg u256 a, reg u256 b) -> reg u256 {
+    reg u256 res;
+    res = #VPAND_256(a, b);
+    return res;
+}
+
+inline
+fn VOR(reg u256 a, reg u256 b) -> reg u256 {
+    reg u256 res;
+    res = #VPOR_256(a, b);
+    return res;
+}
+
+inline
+fn VBROADCAST(inline int b) -> reg u256 {
+    reg u256 res;
+    res = #VPBROADCAST_4u64(b);
+    return res;
+}
+
+inline
+fn VFMA(reg u256 a, reg u256 b, reg u256 c) -> reg u256 {
+    reg u256 res;
+    res = VMUL(b, c);
+    res = VADD(res, a);
+    return res;
+}
+
+inline
+fn VGATHER(reg u64 ap) -> reg u256 {
+    reg u128 h = (u128)[ap + 0];
+    reg u256 res = (u256)[ap + 0];
+    h = h ^ h;
+    res = res ^ res;
+
+    reg u64 r = [ap + 0];
+    h = #VPINSR_2u64(h, r, 0);
+
+    r = [ap + {{block_size}}];
+    h = #VPINSR_2u64(h, r, 1);
+    res = #VINSERTI128(res, h, 0);
+
+    r = [ap + {{2 * block_size}}];
+    h = #VPINSR_2u64(h, r, 0);
+    r = [ap + {{3 * block_size}}];
+    h = #VPINSR_2u64(h, r, 1);
+    res = #VINSERTI128(res, h, 1);
+
+    return res;
+}
+
+export
+fn gather(reg ptr u256[{{l}}] out, reg u64 ap, reg u256 bigv_mask, reg u256 gather_small_mask, reg u256 or_mask) -> reg ptr u256[{{l}}] {
+    {% for i in range(l-1) -%}
+    out[{{i}}] = VGATHER(ap);
+    ap = ap + {{shift_right((i+1)*big,3) - shift_right(i*big,3)}};
+    {% endfor -%}
+    out[{{l-1}}] = VGATHER(ap); 
+    {% for i in range(l) -%}
+    out[{{i}}] = VSRLI(out[{{i}}], {{(i * big) % 8}}); 
+    {% endfor -%}
+    {% for i in range(l-1) -%}
+    out[{{i}}] = VAND(out[{{i}}], bigv_mask); 
+    {% endfor -%}
+    out[{{l-1}}] = VAND(out[{{l-1}}], gather_small_mask); 
+    out[{{l-1}}] = VOR(out[{{l-1}}], or_mask); 
+    return out;
+}
+
+inline
+fn GET_CARRY(reg u256 a, inline int b) -> reg u256 {
+    reg u256 res;
+    res = VSRLI(a, b);
+    return res;
+}
+
+inline
+fn MULT_THETA(reg u256 a) -> reg u256 { 
+    reg u256 out;
+    reg u256 t;
+    {% set first = namespace(value=True) -%}
+    {%- set prev = namespace(value=0) -%}
+    {% for i, b in enumerate(reversed(bin(theta)[2:])) -%}
+    {% if b == '1' -%}
+    {%- if first.value -%}
+    out = VSLLI(a, {{i}}); 
+    {%- set prev.value = i -%}
+    {%- set first.value = False -%}
+    {%- else %}
+    t = VSLLI(a, {{i}});
+    out = VADD(t, out); 
+    {%- set prev.value = i -%}
+    {%- endif -%}
+    {%- endif -%}
+    {% endfor %} 
+    return out; 
+}
+
+export
+fn carry(reg ptr u256[{{l}}] A, reg u256 bigv_mask, reg u256 smallv_mask) -> reg ptr u256[{{l}}] {  
+    reg u256 c;
+    {% for i in range(l-1) -%}
+    c = GET_CARRY(A[{{i}}], {{big}});
+    A[{{i+1}}] = VADD(A[{{i+1}}], c); 
+    {% endfor -%}
+    {% for i in range(l-1) -%}
+    A[{{i}}] = VAND(A[{{i}}], bigv_mask);    
+    {% endfor -%}
+    c = GET_CARRY(A[{{l-1}}], {{small}});
+    c = MULT_THETA(c);
+    A[0] = VADD(A[0], c);    
+    A[{{l-1}}] = VAND(A[{{l-1}}], smallv_mask);  
+    c = GET_CARRY(A[0], {{big}});
+    A[1] = VADD(A[1], c); 
+    c = GET_CARRY(A[1], {{big}});
+    A[2] = VADD(A[2], c); 
+    A[0] = VAND(A[0], bigv_mask);    
+    A[1] = VAND(A[1], bigv_mask);    
+    return A;
+}
+
+export
+fn elementwise_add(reg ptr u256[{{l}}] A, reg ptr u256[{{l}}] B) -> reg ptr u256[{{l}}] {  
+    {% for i in range(l) -%}
+    A[{{i}}] = VADD(B[{{i}}], A[{{i}}]);
+    {% endfor %}
+    return A;
+}
+
+export
+fn unrolled(reg u64 TMPIN, reg u64 KMIN, reg u64 ap, reg u256 bigv_mask, reg u256 smallv_mask, reg u256 gather_small_mask, reg u256 or_mask) {  
+    reg u256[{{l}}] TMP;
+    stack u256[{{l}}] ACC;
+    reg u256[{{2*l-1}}] KM;
+
+    stack u256 bigv_mask_stack = bigv_mask;
+    stack u256 smallv_mask_stack = smallv_mask;
+    stack u256 gather_small_mask_stack = gather_small_mask;
+    stack u256 or_mask_stack = or_mask;
+
+    inline int i;
+    for i = 0 to {{l}} {
+        reg u256 tmp = (u256)[TMPIN + 32 * i];
+        TMP[i] = tmp;
+    }
+    for i = 0 to {{2*l-1}} {
+        reg u256 tmp = (u256)[KMIN + 32 * (i + {{(2*l-1) * (unroll - 1)}}) ];
+        KM[i] = tmp;
+    }
+
+    reg u256 acc;
+    {% for i in range(l) -%}
+    {%- for j in range(l) -%}
+    {% if j == 0 -%}
+    acc = VMUL(TMP[{{j}}], KM[{{l - 1 - i + j}}]); 
+    {%- else -%}
+    acc = VFMA(acc, TMP[{{j}}], KM[{{l - 1 - i + j}}]); 
+    {%- endif %}
+    {% endfor -%}
+    ACC[{{i}}] = acc;
+    {% endfor %}
+
+    bigv_mask = bigv_mask_stack;
+    gather_small_mask = gather_small_mask_stack;
+    or_mask = or_mask_stack;
+
+    {% for i in range(l-1) -%}
+    TMP[{{i}}] = VGATHER(ap);
+    ap = ap + {{shift_right((i+1)*big,3) - shift_right((i)*big,3)}};
+    {% endfor -%}
+    TMP[{{l-1}}] = VGATHER(ap); 
+    {% for i in range(l) -%}
+    TMP[{{i}}] = VSRLI(TMP[{{i}}], {{(i * big) % 8}}); 
+    {% endfor -%}
+    {% for i in range(l-1) -%}
+    TMP[{{i}}] = VAND(TMP[{{i}}], bigv_mask); 
+    {% endfor -%}
+    TMP[{{l-1}}] = VAND(TMP[{{l-1}}], gather_small_mask); 
+    TMP[{{l-1}}] = VOR(TMP[{{l-1}}], or_mask); 
+
+    {% for ui in range(unroll-1) -%}
+
+    for i = 0 to {{2*l-1}} {
+        reg u256 tmp = (u256)[KMIN + 32 * (i + {{(2*l-1) * (unroll - 2 - ui)}})];
+        KM[i] = tmp;
+    }
+
+    {% for i in range(l) -%}
+    acc = ACC[{{i}}];
+    {% for j in range(l) -%}
+    acc = VFMA(acc, TMP[{{j}}], KM[{{l - 1 - i + j}}]); 
+    {% endfor -%}
+    ACC[{{i}}] = acc;
+    {% endfor %}
+
+    bigv_mask = bigv_mask_stack;
+    gather_small_mask = gather_small_mask_stack;
+    or_mask = or_mask_stack;
+
+    ap = ap + {{shift_right((l)*big,3) - shift_right((l-1)*big,3) + block_size * (simd_size - 1)}};
+    {% for i in range(l-1) -%}
+    TMP[{{i}}] = VGATHER(ap);
+    ap = ap + {{shift_right((i+1)*big,3) - shift_right((i)*big,3)}};
+    {% endfor -%}
+    TMP[{{l-1}}] = VGATHER(ap); 
+    {% for i in range(l) -%}
+    TMP[{{i}}] = VSRLI(TMP[{{i}}], {{(i * big) % 8}}); 
+    {% endfor -%}
+    {% for i in range(l-1) -%}
+    TMP[{{i}}] = VAND(TMP[{{i}}], bigv_mask); 
+    {% endfor -%}
+    TMP[{{l-1}}] = VAND(TMP[{{l-1}}], gather_small_mask); 
+    TMP[{{l-1}}] = VOR(TMP[{{l-1}}], or_mask); 
+
+    {% endfor -%}
+
+    {% for i in range(l) -%}
+    TMP[{{i}}] = VADD(ACC[{{i}}], TMP[{{i}}]);
+    {% endfor %}
+
+    smallv_mask = smallv_mask_stack;
+
+    reg u256 c;
+    {% for i in range(l-1) -%}
+    c = GET_CARRY(TMP[{{i}}], {{big}});
+    TMP[{{i+1}}] = VADD(TMP[{{i+1}}], c); 
+    {% endfor -%}
+    {% for i in range(l-1) -%}
+    TMP[{{i}}] = VAND(TMP[{{i}}], bigv_mask);    
+    {% endfor -%}
+    c = GET_CARRY(TMP[{{l-1}}], {{small}});
+    c = MULT_THETA(c);
+    TMP[0] = VADD(TMP[0], c);    
+    TMP[{{l-1}}] = VAND(TMP[{{l-1}}], smallv_mask);  
+    c = GET_CARRY(TMP[0], {{big}});
+    TMP[1] = VADD(TMP[1], c); 
+    c = GET_CARRY(TMP[1], {{big}});
+    TMP[2] = VADD(TMP[2], c); 
+    TMP[0] = VAND(TMP[0], bigv_mask);    
+    TMP[1] = VAND(TMP[1], bigv_mask);    
+
+    for i = 0 to {{l}} {
+        reg u256 tmp = TMP[i];
+        (u256)[TMPIN + 32 * i] = tmp;
+    }
+}
+
+export
+fn cleanup(reg u64 TMPIN, reg u64 KMIN, reg u64 ap, reg u256 bigv_mask, reg u256 smallv_mask, reg u256 gather_small_mask, reg u256 or_mask) {  
+    reg u256[{{l}}] TMP;
+    stack u256[{{l}}] ACC;
+    reg u256[{{2*l-1}}] KM;
+
+    stack u256 bigv_mask_stack = bigv_mask;
+    stack u256 smallv_mask_stack = smallv_mask;
+    stack u256 gather_small_mask_stack = gather_small_mask;
+    stack u256 or_mask_stack = or_mask;
+
+    inline int i;
+    for i = 0 to {{l}} {
+        reg u256 tmp = (u256)[TMPIN + 32 * i];
+        TMP[i] = tmp;
+    }
+    for i = 0 to {{2*l-1}} {
+        reg u256 tmp = (u256)[KMIN + 32 * i];
+        KM[i] = tmp;
+    }
+    reg u256 acc;
+    {% for i in range(l) -%}
+    {%- for j in range(l) -%}
+    {% if j == 0 -%}
+    acc = VMUL(TMP[{{j}}], KM[{{l - 1 - i + j}}]); 
+    {%- else -%}
+    acc = VFMA(acc, TMP[{{j}}], KM[{{l - 1 - i + j}}]); 
+    {%- endif %}
+    {% endfor -%}
+    ACC[{{i}}] = acc;
+    {% endfor %}
+
+    bigv_mask = bigv_mask_stack;
+    smallv_mask = smallv_mask_stack;
+    gather_small_mask = gather_small_mask_stack;
+    or_mask = or_mask_stack;
+
+    {% for i in range(l-1) -%}
+    TMP[{{i}}] = VGATHER(ap);
+    ap = ap + {{shift_right((i+1)*big,3) - shift_right((i)*big,3)}};
+    {% endfor -%}
+    TMP[{{l-1}}] = VGATHER(ap); 
+    {% for i in range(l) -%}
+    TMP[{{i}}] = VSRLI(TMP[{{i}}], {{(i * big) % 8}}); 
+    {% endfor -%}
+    {% for i in range(l-1) -%}
+    TMP[{{i}}] = VAND(TMP[{{i}}], bigv_mask); 
+    {% endfor -%}
+    TMP[{{l-1}}] = VAND(TMP[{{l-1}}], gather_small_mask); 
+    TMP[{{l-1}}] = VOR(TMP[{{l-1}}], or_mask); 
+
+    {% for i in range(l) -%}
+    TMP[{{i}}] = VADD(ACC[{{i}}], TMP[{{i}}]);
+    {% endfor %}
+
+    reg u256 c;
+    {% for i in range(l-1) -%}
+    c = GET_CARRY(TMP[{{i}}], {{big}});
+    TMP[{{i+1}}] = VADD(TMP[{{i+1}}], c); 
+    {% endfor -%}
+    {% for i in range(l-1) -%}
+    TMP[{{i}}] = VAND(TMP[{{i}}], bigv_mask);    
+    {% endfor -%}
+    c = GET_CARRY(TMP[{{l-1}}], {{small}});
+    c = MULT_THETA(c);
+    TMP[0] = VADD(TMP[0], c);    
+    TMP[{{l-1}}] = VAND(TMP[{{l-1}}], smallv_mask);  
+    c = GET_CARRY(TMP[0], {{big}});
+    TMP[1] = VADD(TMP[1], c); 
+    c = GET_CARRY(TMP[1], {{big}});
+    TMP[2] = VADD(TMP[2], c); 
+    TMP[0] = VAND(TMP[0], bigv_mask);    
+    TMP[1] = VAND(TMP[1], bigv_mask);    
+
+    for i = 0 to {{l}} {
+        reg u256 tmp = TMP[i];
+        (u256)[TMPIN + 32 * i] = tmp;
+    }
+}

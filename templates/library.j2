@@ -1,0 +1,357 @@
+{# ./templates/library.j2 #}
+#pragma once
+
+#include <cstring>
+#include <immintrin.h>
+
+{% include 'macros.j2' %}
+
+{% include 'structs.j2' %}
+
+{% include 'util.j2' %}
+
+{% include 'scalar.j2' %}
+
+{% include 'sphv.j2' %}
+
+{% include 'instructions.j2' %}
+
+{% include 'gather.j2' %}
+
+{% include 'mult.j2' %}
+
+{% include 'matmul.j2' %}
+
+{% include 'add.j2' %}
+
+{% include 'carry.j2' %}
+
+{% include 'main.j2' %}
+
+{% if jasmin != 2 %}
+
+void eval(unsigned char* in, bigint key, bigint* res, int degree){
+    int cur = 0;
+    const vtype thetav = VBROADCAST(_THETA);
+    const vtype bigv_mask = VBROADCAST((1L << _BIG) - 1);
+    const vtype smallv_mask = VBROADCAST((1L << _SMALL) - 1);
+    const vtype gather_small_mask = VBROADCAST((1L << SMALLR) - 1);
+    const vtype or_mask = VBROADCAST((1ull << SMALLR));
+    const vtype vindex = VINDEX;
+    vtype last_shift;
+    vtype rlast;
+    bbigint TMP;
+    bacc ACC;
+    {% if not karatsuba %}
+    for (int i = 0; i < _L; i++){ACC.x[i] = VSETZERO;}
+    {% endif %}
+
+    bkey KM[_UNROLL];
+    bigint Ks[_SIMD+_UNROLL];
+    bbigint LAST_KEY;
+    bacc LK_TMP;
+    bbigint K0;
+    bbigint CARRY_TMP;
+
+    {% if ifma %}
+
+    copy(&Ks[0], &key);
+    for (int i = 1; i < _SIMD; i++){
+        mul(&Ks[i-1], &key, &Ks[i]);
+        carry_round(&Ks[i]);
+    }
+    for (int i = _SIMD; i < _SIMD+_UNROLL-1; i++){
+        mul(&Ks[i-1], &Ks[_SIMD-1], &Ks[i]);
+        carry_round(&Ks[i]);
+    }
+    
+    //init to 1
+    {% for i in range(l) %}
+    LAST_KEY.x[{{i}}] = VSET(1, key.x[{{i}}], key.x[{{i}}], key.x[{{i}}], key.x[{{i}}], key.x[{{i}}], key.x[{{i}}], key.x[{{i}}]);
+    K0.x[{{i}}] = VBROADCAST(key.x[{{i}}]);
+    {%- endfor %}
+
+    //pprint_bbigint(LAST_KEY);
+
+    // Compute Last key
+    {% for s in range(simd_size-2) %}
+    ZEROACC(LK_TMP);
+    {% for i in range(l) -%}
+    {% for j in range(i+1) -%}
+    VFMA_MASK(LK_TMP.x[{{i}}], LK_TMP.x[{{i+l}}], LAST_KEY.x[{{j}}], K0.x[{{i-j}}], {{shift_right(63, s)}}); 
+    {% endfor -%}        
+    {% for j in range(i+1, l) -%}
+    VFMA_MASK(LK_TMP.x[{{i}}], LK_TMP.x[{{i+l}}], LAST_KEY.x[{{j}}], MULT_KAPPA(K0.x[{{l-j+i}}]),  {{shift_right(63, s)}}); 
+    {% endfor -%}
+    {% endfor -%}
+    CARRY_ROUND(CARRY_TMP, LK_TMP);
+    BLEND(LAST_KEY, CARRY_TMP,  {{shift_right(63, s)}})
+    //std::cout << "last key {{s}}: " << std::endl;
+    //pprint_bbigint(LAST_KEY);
+    {% endfor %}
+
+    // init KM[0]
+    ZEROACC(LK_TMP);
+    {% for i in range(l) -%}
+    {% for j in range(i+1) -%}
+    VFMA_MASK(LK_TMP.x[{{i}}], LK_TMP.x[{{i+l}}], LAST_KEY.x[{{j}}], K0.x[{{i-j}}], 0b00000001); 
+    {% endfor -%}        
+    {% for j in range(i+1, l) -%}
+    VFMA_MASK(LK_TMP.x[{{i}}], LK_TMP.x[{{i+l}}], LAST_KEY.x[{{j}}], MULT_KAPPA(K0.x[{{l-j+i}}]),  0b00000001); 
+    {% endfor -%}
+    {% endfor -%}
+    CARRY_ROUND(CARRY_TMP, LK_TMP);
+    {% for i in range(l) -%}
+    KM[0].x[{{l - 1 - i}}] = PERMUTE(0, CARRY_TMP.x[{{i}}]);
+    {% endfor %}
+    {% for i in range(1,l) -%}
+    KM[0].x[{{l + i - 1}}] = PERMUTE(0, MULT_KAPPA(CARRY_TMP.x[{{l - i}}]));
+    {% endfor %}
+
+    // precompute 
+    {% for u in range(1,unroll) -%}
+    ZEROACC(LK_TMP);
+    {% for i in range(l) -%}
+    {% for j in range(l) -%}
+    VFMA(LK_TMP.x[{{i}}], LK_TMP.x[{{i+l}}], KM[{{u-1}}].x[{{l-j-1}}], KM[0].x[{{l - 1 - i + j}}]); 
+    {% endfor -%}        
+    {% endfor -%}
+    CARRY_ROUND(CARRY_TMP, LK_TMP);
+    {% for i in range(l) -%}
+    KM[{{u}}].x[{{l - 1 - i}}] = PERMUTE(0, CARRY_TMP.x[{{i}}]);
+    {% endfor %}
+    {% for i in range(1,l) -%}
+    KM[{{u}}].x[{{l + i - 1}}] = PERMUTE(0, MULT_KAPPA(CARRY_TMP.x[{{l - i}}]));
+    {% endfor %}
+    {% endfor %}
+
+
+    {% else %}
+    {#
+    {% for i in range(l) %}
+    LAST_KEY.x[{{i}}] = VSET(
+        1
+    {%- for s in range(simd_size-1) %}
+        , key.x[{{i}}]
+    {%- endfor %}
+    );
+    K0.x[{{i}}] = VBROADCAST(key.x[{{i}}]);
+    {%- endfor %}
+
+    //std::cout << "LAST_KEY 0 " << std::endl;
+    //pprint_bbigint(LAST_KEY);
+
+    //compute  LAST_KEY
+    {% for s in range(simd_size-2) %}
+    {% for i in range(l) -%}
+    {% for j in range(i+1) -%}
+    {% if j == 0 -%}
+    LK_TMP.x[{{i}}] = VMUL(LAST_KEY.x[{{j}}], K0.x[{{i - j}}]); 
+    {% else -%}
+    LK_TMP.x[{{i}}] = VFMA(LK_TMP.x[{{i}}], LAST_KEY.x[{{j}}], K0.x[{{i - j}}]); 
+    {% endif -%}
+    {% endfor -%}        
+    {%- for j in range(i+1, l) -%}
+    LK_TMP.x[{{i}}] = VFMA(LK_TMP.x[{{i}}], LAST_KEY.x[{{j}}], MULT_KAPPA(K0.x[{{l-j+i}}])); 
+    {% endfor -%}        
+    {% endfor -%}    
+    CARRY_ROUND(LK_TMP);
+    {% if simd_size == 4 %}
+    BLEND(LAST_KEY, LK_TMP,  {{shift_right(15, 2*s)}})
+    {% else %}
+    BLEND(LAST_KEY, LK_TMP,  {{shift_right(63, s)}})
+    {% endif %}
+    //std::cout << "LAST_KEY {{s+2}} " << std::endl;
+    //pprint_bbigint(LAST_KEY);
+    {% endfor %}
+
+    // init KM[0]
+    {% for i in range(l) -%}
+    {% for j in range(i+1) -%}
+    {% if j == 0 -%}
+    LK_TMP.x[{{i}}] = VMUL(LAST_KEY.x[{{j}}], K0.x[{{i - j}}]); 
+    {% else -%}
+    LK_TMP.x[{{i}}] = VFMA(LK_TMP.x[{{i}}], LAST_KEY.x[{{j}}], K0.x[{{i - j}}]); 
+    {% endif -%}
+    {% endfor -%}        
+    {%- for j in range(i+1, l) -%}
+    LK_TMP.x[{{i}}] = VFMA(LK_TMP.x[{{i}}], LAST_KEY.x[{{j}}], MULT_KAPPA(K0.x[{{l-j+i}}])); 
+    {% endfor -%}        
+    {% endfor -%}    
+
+    CARRY_ROUND(LK_TMP);
+    {% for i in range(l) -%}
+    KM[0].x[{{l - 1 - i}}] = PERMUTE(0, LK_TMP.x[{{i}}]);
+    {% endfor %}
+    {% for i in range(1,l) -%}
+    KM[0].x[{{l + i - 1}}] = PERMUTE(0, MULT_KAPPA(LK_TMP.x[{{l - i}}]));
+    {% endfor %}
+
+    // precompute key powers
+    {% for u in range(1,unroll) -%}
+    {% for i in range(l) -%}
+    {%- for j in range(l) -%}
+    {% if j == 0 -%}
+    LK_TMP.x[{{i}}] = VMUL(KM[{{u-1}}].x[{{l-j-1}}], KM[0].x[{{l - 1 - i + j}}]); 
+    {%- else -%}
+    LK_TMP.x[{{i}}] = VFMA(LK_TMP.x[{{i}}], KM[{{u-1}}].x[{{l-j-1}}], KM[0].x[{{l - 1 - i + j}}]); 
+    {%- endif %}
+    {% endfor -%}
+    {% endfor %}
+
+    CARRY_ROUND(LK_TMP);
+    {% for i in range(l) -%}
+    KM[{{u}}].x[{{l - 1 - i}}] = PERMUTE(0, LK_TMP.x[{{i}}]);
+    {% endfor %}
+    {% for i in range(1,l) -%}
+    KM[{{u}}].x[{{l + i - 1}}] = PERMUTE(0, MULT_KAPPA(LK_TMP.x[{{l - i}}]));
+    {% endfor %}
+    {% endfor %}
+    #}
+
+    copy(&Ks[0], &key);
+    for (int i = 1; i < _SIMD; i++){
+        mul(&Ks[i-1], &key, &Ks[i]);
+        carry_round(&Ks[i]);
+    }
+    for (int i = _SIMD; i < _SIMD+_UNROLL-1; i++){
+        mul(&Ks[i-1], &Ks[_SIMD-1], &Ks[i]);
+        carry_round(&Ks[i]);
+    }
+
+    {% if karatsuba %}
+    for(int u = 0; u < _UNROLL; u++){
+        for(int i = 0; i < _L; i++){
+            KM[u].x[i] = VBROADCAST((unsigned long long int)Ks[_SIMD-1+u].x[i]);
+        }
+    }
+    {% else %}
+
+    {#
+    for(int u = 0; u < _UNROLL; u++){
+        for(int i = 0; i < _L; i++){
+            KM[u].x[i] = VBROADCAST((unsigned long long int)Ks[_SIMD-1+u].x[i]);
+        }
+    }
+    #}
+    for(int u = 0; u < _UNROLL; u++){
+        for(int i = 0; i < _L; i++){
+            KM[u].x[_L - 1 - i] = VBROADCAST((unsigned long long int)Ks[_SIMD-1+u].x[i]);
+        }
+        for(int i = 1; i < _L; i++){
+            KM[u].x[_L + i - 1] = VBROADCAST((unsigned long long int)((ull)_KAPPA * Ks[_SIMD-1+u].x[_L - i]));
+        }
+    }
+
+    {% endif %}
+
+
+    {% for i in range(l) %}
+    LAST_KEY.x[{{i}}] = VSET(
+        1
+    {%- for s in range(simd_size-1) %}
+        , Ks[{{s}}].x[{{i}}]
+    {%- endfor %}
+    )
+    {% endfor %}
+
+    {% endif %}
+
+
+
+    // start computation
+    if(degree >= _SIMD){
+        GATHER(TMP, in);
+        cur = _SIMD;
+        for (; cur < degree - (_SIMD*_UNROLL) + 1; cur+=_SIMD*_UNROLL){
+            UNROLLED(ACC, TMP, KM, in, cur)
+        }
+        for (; cur < degree - _SIMD + 1; cur+=_SIMD){
+            CLEANUP(ACC, TMP, KM, in, cur)
+        }
+        {% if ifma -%}
+        ZEROACC(ACC);
+        /*
+        std::cout << "TMP" << std::endl;
+        pprint_bbigint(TMP);
+        ull FIN[_L * _SIMD]; 
+        unsigned long long int TFIN[_L * _SIMD]; 
+        {% for i in range(l) -%}
+        VSTORE(&TFIN[{{i}}*_SIMD], TMP.x[{{i}}]); 
+        {% endfor -%}
+        for(int i = 0; i < _L * _SIMD; i++){ 
+            FIN[i] = TFIN[i]; 
+        }
+        finalize(res, FIN, Ks);
+        std::cout << "res" << std::endl;
+        pprint(*res);
+        */
+        {% for i in range(l) -%}
+        {% for j in range(i) -%}
+        VFMA_MASK(ACC.x[{{i}}], ACC.x[{{i+l}}], TMP.x[{{j}}], LAST_KEY.x[{{i-j}}], 0b01111111); 
+        {% endfor -%}        
+        VFMA(ACC.x[{{i}}], ACC.x[{{i+l}}], TMP.x[{{i}}], LAST_KEY.x[0]); 
+        {% for j in range(i+1, l) -%}
+        VFMA_MASK(ACC.x[{{i}}], ACC.x[{{i+l}}], TMP.x[{{j}}], MULT_KAPPA(LAST_KEY.x[{{l-j+i}}]), 0b01111111); 
+        {% endfor -%}        
+        {% endfor -%}          
+        CARRY_ROUND(TMP, ACC);   
+        {% for i in range(l) -%}
+        res->x[{{i}}] = _mm512_reduce_add_epi64(TMP.x[{{i}}]);
+        {% endfor -%}
+        carry_round(res);
+        {% else -%}
+
+        //std::cout << "LAST_KEY" << std::endl;
+        //pprint_bbigint(LAST_KEY);
+        //std::cout << "TMP" << std::endl;
+        //pprint_bbigint(TMP);
+
+        {% for i in range(l) -%}
+        {% for j in range(i+1) -%}
+        {% if j == 0 -%}
+        ACC.x[{{i}}] = VMUL(TMP.x[{{j}}], LAST_KEY.x[{{i - j}}]); 
+        {% else -%}
+        ACC.x[{{i}}] = VFMA(ACC.x[{{i}}], TMP.x[{{j}}], LAST_KEY.x[{{i - j}}]); 
+        {% endif -%}
+        {% endfor -%}        
+        {%- for j in range(i+1, l) -%}
+        ACC.x[{{i}}] = VFMA(ACC.x[{{i}}], TMP.x[{{j}}], MULT_KAPPA(LAST_KEY.x[{{l-j+i}}])); 
+        {% endfor -%}        
+        {% endfor -%}    
+
+        {% if simd_size == 4 %}
+        BLEND(TMP, ACC, 0b00111111)
+        {% else %}
+        BLEND(TMP, ACC, 0b01111111)
+        {% endif %}
+        //std::cout << "TMP" << std::endl;
+        //pprint_bbigint(TMP);
+
+        CARRY_ROUND(TMP)
+        REDUCE(TMP, res)
+        carry_round(res);
+        {#    
+        ull FIN[_L * _SIMD]; 
+        {% for i in range(l) -%}
+        VSTORE(&FIN[{{i}}*_SIMD], TMP.x[{{i}}]); 
+        {% endfor -%}
+        finalize(res, FIN, Ks);
+        #}
+        {%- endif %}
+    }
+    if(cur == 0){
+        load_scalar(res, in);
+        cur = 1;
+    }
+    bigint tmp;
+    for (; cur < degree; cur+=1){
+        load_scalar(&tmp, in + cur * _BLOCK);
+        fmadd(res, &Ks[0], &tmp);
+        carry_round(&tmp);
+        copy(res, &tmp);
+    }
+    carry_round(res);
+}
+
+{% endif %}

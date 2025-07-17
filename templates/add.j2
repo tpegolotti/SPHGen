@@ -1,0 +1,67 @@
+{# ./templates/add.j2 #}
+
+{% if jasmin -%}
+
+extern "C" __m256i* elementwise_add(__m256i* A, __m256i* B);
+#define ELEMENTWISE_ADD(A, B) elementwise_add(A.x, B.x);
+
+{% else %}
+{% if karatsuba %}
+
+// A is TMP, B is ACC
+#define ELEMENTWISE_ADD(A, B) \
+    {% for i in range(2*ceil(l/2)-1) -%}
+    {% if i < 2*floor(l/2) - 1 -%}
+    B.z3[{{i}}] = VSUB(B.z3[{{i}}], VADD(B.z0[{{i}}], B.z2[{{i}}])); \
+    {% else -%}
+    B.z3[{{i}}] = VSUB(B.z3[{{i}}], B.z0[{{i}}]); \
+    {% endif -%}
+    {% endfor -%}   
+    {% for i in range(ceil(l/2)) -%}
+    A.x[{{i}}] = VADD(B.z0[{{i}}], A.x[{{i}}]); \
+    {% endfor -%}
+    {% for i in range(ceil(l/2), 2*ceil(l/2)-1) -%}
+    A.x[{{i}}] = VADD(VADD(B.z0[{{i}}], B.z3[{{i - ceil(l/2)}}]), A.x[{{i}}]); \
+    {% endfor -%}
+
+    {% for i in range(2*ceil(l/2)-1, l) -%}
+    A.x[{{i}}] = VADD(B.z3[{{i - ceil(l/2)}}], A.x[{{i}}]); \
+    {% endfor -%}
+
+    {% if l%2 -%}
+    vtype b_theta = MULT_THETA(B.z3[{{floor(l/2)}}]) \
+    {% if big != small -%}
+    b_theta = VSLLI(b_theta, {{big - small}}); \
+    {% endif -%}
+    A.x[0] = VADD(b_theta, A.x[0]); \
+    {% endif -%}
+
+
+    {% for i in range(2*floor(l/2)-1) -%}
+    {% if i < ceil(l/2)-1 -%}
+    b_theta = MULT_THETA(VADD(B.z2[{{i}}], B.z3[{{i+ceil(l/2)}}])) \
+    {% else -%}
+    b_theta = MULT_THETA(B.z2[{{i}}]) \
+    {% endif -%}
+    {% if big != small -%}
+    b_theta = VSLLI(b_theta, {{big - small}}); \
+    {% endif -%}
+    A.x[{{i+l%2}}] = VADD(b_theta, A.x[{{i+l%2}}]); \
+    {% endfor %}
+
+{% else %}
+// (A, B) => A += B
+#define ELEMENTWISE_ADD(A, B) /* @SPHVerify: func add_bigints  */\
+    /* @SPHVerify: pre A = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre B = [sp.Matrix([sp.symbols(f'b_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre AO = sp.Matrix([A[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}}) */\ 
+    /* @SPHVerify: pre BO = sp.Matrix([B[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}}) */\ 
+    /* @SPHVerify: post O = sp.Matrix(AO) + sp.Matrix(BO) */\
+    /* @SPHVerify: post A = sp.Matrix([A[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}}) */\ 
+    /* @SPHVerify: post assert O == A  */\
+    {% for i in range(l) -%}
+    A.x[{{i}}] = VADD(B.x[{{i}}], A.x[{{i}}]);\
+    {% endfor %}
+    /* @SPHVerify: endfunc add_bigints  */
+{% endif %}
+{% endif %}
