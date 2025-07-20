@@ -27,25 +27,25 @@ generate_jasmin: src/main.cpp
 	jasminc -pasm src/library.jazz > src/library.s
 
 verify: bin generate src/main.cpp
-	python src/verify1.py
+	python src/verify.py
 
 main: bin generate src/main.cpp
 	g++ src/main.cpp -o bin/main $(FLAGS);
-	python src/verify1.py;\
+	python src/verify.py;\
 
 asm: bin generate src/main.cpp
 	g++ src/main.cpp -o bin/main.s -S $(FLAGS)
 
 test: bin generate src/main.cpp
 	@g++ src/main.cpp -o bin/test $(TEST_FLAGS) -DTEST; \
-	python src/verify1.py;\
+	python src/verify.py;\
 	for number in `seq $(LOWER) $(UPPER)`; do \
         ./bin/test $$number; \
     done \
 
 test_jasmin: bin generate_jasmin src/main.cpp src/library.s
 	@g++ src/main.cpp src/library.s -o bin/test_jasmin $(TEST_FLAGS) -DTEST; \
-	python src/verify1.py;\
+	python src/verify.py;\
 	for number in `seq $(LOWER) $(UPPER)`; do \
         ./bin/test_jasmin $$number; \
     done \
@@ -58,7 +58,7 @@ test_batch: bin src/main.cpp
 		pi=`echo $$pis | cut -d ' ' -f $$i`; \
 		theta=`echo $$thetas | cut -d ' ' -f $$i`; \
 		python gen.py -p $$pi -t $$theta -s $(SIMD) -u $(UNROLL) $(OPTIONS); \
-		python src/verify1.py;\
+		python src/verify.py;\
 		g++ src/main.cpp -o bin/test $(TEST_FLAGS) -DTEST; \
 		./bin/test 128; \
 	done
