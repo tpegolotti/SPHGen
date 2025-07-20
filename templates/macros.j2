@@ -1,0 +1,25 @@
+{# ./templates/macros.j2 #}
+
+#define _PI {{ pi}}
+#define _THETA {{ theta }}
+#define _L {{ l}}
+#define _LACC {{ l if not karatsuba else 2*l - 1}}
+#define _LKEY {{ 2*l-1 if not karatsuba else l}}
+#define _BIG {{ big }}
+#define _SMALL {{ small }}
+#define _KAPPA {{ kappa }}
+#define _SIMD {{ simd_size }}
+#define _BLOCK {{ block_size }}
+#define _PIB {{ pib }}
+#define SMALLR {{ smallR }}
+#define _UNROLL {{ unroll }}
+#define _CPI {{ cpi }}
+#define _BIG_MASK {{ (2**big) - 1 }}
+#define _SMALL_MASK {{ (2**small) - 1 }}
+#define SMALLR_MASK {{ (2**smallR) - 1 }}
+
+{% if simd_size == 4 -%}
+typedef __m256i vtype;
+{% else -%}
+typedef __m512i vtype;
+{% endif -%}

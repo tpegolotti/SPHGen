@@ -1,0 +1,49 @@
+{# ./templates/mult.j2 #}
+
+vtype MULT_KAPPA(vtype a){/* @SPHVerify: func mult_kappa  */\
+    /* @SPHVerify: pre a = sp.symbols('a')*/\
+    /* @SPHVerify: pre out = sp.symbols('out')*/\
+    /* @SPHVerify: post oracle = a * {{kappa}} */\
+    /* @SPHVerify: post assert out == oracle  */\
+    vtype out; /* @SPHVerify: ignore  */
+    {% set first = namespace(value=True) -%}
+    {%- set prev = namespace(value=0) -%}
+    {% for i, b in enumerate(reversed(bin(kappa)[2:])) -%}
+    {% if b == '1' -%}
+    {%- if first.value -%}
+    out = VSLLI(a, {{i}}); 
+    {%- set prev.value = i -%}
+    {%- set first.value = False -%}
+    {%- else %}
+    out = VADD(VSLLI(a, {{i}}), out); 
+    {%- set prev.value = i -%}
+    {%- endif -%}
+    {%- endif -%}
+    {% endfor %}
+    return out; /* @SPHVerify: ignore  */
+    /* @SPHVerify: endfunc matmul_kappa  */
+}
+
+vtype MULT_THETA(vtype a){ /* @SPHVerify: func mult_theta  */
+    /* @SPHVerify: pre a = sp.symbols('a')*/
+    /* @SPHVerify: pre out = sp.symbols('out')*/
+    /* @SPHVerify: post oracle = a * {{theta}} */
+    /* @SPHVerify: post assert out == oracle  */
+    vtype out; /* @SPHVerify: ignore  */
+    {% set first = namespace(value=True) -%}
+    {%- set prev = namespace(value=0) -%}
+    {% for i, b in enumerate(reversed(bin(theta)[2:])) -%}
+    {% if b == '1' -%}
+    {%- if first.value -%}
+    out = VSLLI(a, {{i}}); 
+    {%- set prev.value = i -%}
+    {%- set first.value = False -%}
+    {%- else %}
+    out = VADD(VSLLI(a, {{i}}), out); 
+    {%- set prev.value = i -%}
+    {%- endif -%}
+    {%- endif -%}
+    {% endfor %} 
+    return out; /* @SPHVerify: ignore  */
+    /* @SPHVerify: endfunc mult_theta  */
+}

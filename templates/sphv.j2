@@ -1,0 +1,24 @@
+{# ./templates/sphv.j2 #}
+
+/* @SPHVerify: op VMUL(a, b):       return a * b */
+/* @SPHVerify: op VADD(a, b):       return a + b */
+/* @SPHVerify: op VSUB(a, b):       return a - b */
+/* @SPHVerify: op VSRLI(a, imm):    return a / (2 ** imm) */
+/* @SPHVerify: op VSLLI(a, imm):    return a * (2 ** imm) */
+/* @SPHVerify: op VAND(a, b):       return a % b */
+/* @SPHVerify: op VOR(a, b):        return a + b */
+/* @SPHVerify: op VGATHER(addr, a, b, c):    return addr @ np.roll(b, a, axis=0) */
+
+{% if not ifma -%}
+/* @SPHVerify: op VFMA(a, b, c):    return a + b * c */
+{% else -%}
+/* @SPHVerify: op VFMALO(lo, b, c):    return lo + (b * c) */
+/* @SPHVerify: op VFMAHI(hi, b, c):    return hi + b * c * sp.Rational(1, 2**52) */
+{% endif -%}
+
+/* @SPHVerify: op MULT_KAPPA(a):    return a * {{kappa}} */
+
+/* @SPHVerify: op MULT_THETA(a):    return a * {{theta}} */
+
+/* @SPHVerify: op GET_CARRY_old(a, shift):    return VSRLI(a, shift) */
+/* @SPHVerify: op GET_CARRY(a, shift):    return a / (2 ** shift) */
