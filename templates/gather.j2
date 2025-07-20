@@ -5,11 +5,11 @@
 #define GATHER(out, memory) /* @SPHVerify: func gather  */\
     /* @SPHVerify: pre memory = sp.Matrix([sp.symbols(f'b_{i}') for i in range({{block_size * (simd_size) + block_size}})]).T*/\ 
     /* @SPHVerify: pre vindex = np.array([np.roll([2**(8*i) if i < 8 else 0 for i in range(memory.shape[1])],j * {{pib // 8}}) for j in range({{simd_size}})]).T*/\ 
-    /* @SPHVerify: pre out = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre outx = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
     /* @SPHVerify: pre bigv_mask = {{2 ** big}} */\
     /* @SPHVerify: pre gather_small_mask = {{2 ** smallR}} */\
     /* @SPHVerify: pre or_mask = {{2 ** smallR}}*sp.ones(1,{{simd_size}}) */\
-    /* @SPHVerify: post CO = sp.Matrix([out[i] for i in range({{l}})])*/\
+    /* @SPHVerify: post CO = sp.Matrix([outx[i] for i in range({{l}})])*/\
     /* @SPHVerify: post L = np.zeros(({{block_size}}, {{l}})).astype(np.int64)*/\
     /* @SPHVerify: post R = np.zeros(({{block_size}}, {{l}})).astype(np.int64)*/\
     {% for i in range(l) -%}

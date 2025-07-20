@@ -13,7 +13,7 @@
 
 {% if karatsuba %}
 
-#define MATMUL(C, A, K, first) \
+#define MATMUL(C, A, K) \
     { \
     bkey KT; \
     {% for k in range(l) -%}
@@ -55,17 +55,19 @@
     {% endfor -%}
     }
 
+#define MATMUL_FIRST(C, A, K) MATMUL(C, A, K); 
+
 {% else %}
 
 // (C, A, K) => C += A * K
 #define MATMUL(C, A, K) /* @SPHVerify: func matmul(C, A, K)  */\
-    /* @SPHVerify: pre C = [sp.Matrix([sp.symbols(f'c_{i}_{j}') for j in range({{simd_size}})]) for i in range({{2*l}})]*/\
-    /* @SPHVerify: pre A = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
-    /* @SPHVerify: pre K = sp.Matrix([sp.symbols(f'K_{ {{l-1}}-i }') if i < {{l}} else sp.symbols(f'K_{ {{2*l-1}}-i }') * {{kappa}} for i in range({{2*l-1}})])*/\ 
-    /* @SPHVerify: pre CM = sp.Matrix([C[i] for i in range({{2*l}})]).reshape({{2*l}}, {{simd_size}})  */\
-    /* @SPHVerify: post AO = sp.Matrix([A[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
-    /* @SPHVerify: post CLO = sp.Matrix([C[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
-    /* @SPHVerify: post CHI = sp.Matrix([C[i+{{l}}] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: pre Cx = [sp.Matrix([sp.symbols(f'c_{i}_{j}') for j in range({{simd_size}})]) for i in range({{2*l}})]*/\
+    /* @SPHVerify: pre Ax = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre Kx = sp.Matrix([sp.symbols(f'K_{ {{l-1}}-i }') if i < {{l}} else sp.symbols(f'K_{ {{2*l-1}}-i }') * {{kappa}} for i in range({{2*l-1}})])*/\ 
+    /* @SPHVerify: pre CM = sp.Matrix([Cx[i] for i in range({{2*l}})]).reshape({{2*l}}, {{simd_size}})  */\
+    /* @SPHVerify: post AO = sp.Matrix([Ax[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post CLO = sp.Matrix([Cx[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post CHI = sp.Matrix([Cx[i+{{l}}] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
     /* @SPHVerify: post KM = sp.Matrix([[sp.symbols(f'K_{i-j}') for j in range(i+1)] + [{{kappa}} * sp.symbols(f'K_{ {{l}}-j+i}') for j in range(i+1, {{l}})] for i in range({{l}})])  */\
     /* @SPHVerify: post THI = CM[{{l}}:,:] + (KM * AO) * sp.Rational(1, 2**52) */\
     /* @SPHVerify: post TLO = CM[:{{l}},:] + (KM * AO) */\
@@ -87,9 +89,30 @@
 
 {% if karatsuba %}
 
-#define MATMUL(C, A, K, first) \
-    { \
-    bkey KT; \
+#define MATMUL(C, A, K) /* @SPHVerify: func matmul(C, A, K)  */\
+    { /* @SPHVerify: ignore  */\
+    /* @SPHVerify: pre Cz0 = [sp.Matrix([0 for j in range({{simd_size}})]) for i in range({{(2*ceil(l/2)-1)}})]*/\
+    /* @SPHVerify: pre Cz2 = [sp.Matrix([0 for j in range({{simd_size}})]) for i in range({{(2*floor(l/2)-1)}})]*/\
+    /* @SPHVerify: pre Cz3 = [sp.Matrix([0 for j in range({{simd_size}})]) for i in range({{(2*ceil(l/2)-1)}})]*/\
+    /* @SPHVerify: pre Ax = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre Kx = sp.Matrix([sp.symbols(f'K_{i}') for i in range({{l}})])*/\ 
+    /* @SPHVerify: pre KTx = sp.Matrix([0 for i in range({{l}})])*/\ 
+    /* @SPHVerify: pre AO0 = sp.Matrix([Ax[i] for i in range({{ceil(l/2)}})]).reshape({{ceil(l/2)}}, {{simd_size}})  */\
+    /* @SPHVerify: pre AO2 = sp.Matrix([Ax[{{ceil(l/2)}} + i] for i in range({{floor(l/2)}})]).reshape({{floor(l/2)}}, {{simd_size}})  */\
+    /* @SPHVerify: pre AO3 = sp.Matrix([Ax[i] + Ax[{{ceil(l/2)}} + i] if i < {{floor(l/2)}} else Ax[i] for i in range({{ceil(l/2)}})]).reshape({{ceil(l/2)}}, {{simd_size}})  */\
+    /* @SPHVerify: post CM0 = sp.Matrix([Cz0[i] for i in range({{(2*ceil(l/2)-1)}})]).reshape({{(2*ceil(l/2)-1)}}, {{simd_size}})  */\
+    /* @SPHVerify: post CM2 = sp.Matrix([Cz2[i] for i in range({{(2*floor(l/2)-1)}})]).reshape({{(2*floor(l/2)-1)}}, {{simd_size}})  */\
+    /* @SPHVerify: post CM3 = sp.Matrix([Cz3[i] for i in range({{(2*ceil(l/2)-1)}})]).reshape({{(2*ceil(l/2)-1)}}, {{simd_size}})  */\
+    /* @SPHVerify: post KM0 = sp.Matrix([sp.Matrix([sp.symbols(f'K_{j-i}') if j - i < {{ceil(l/2)}} and j - i >= 0 else 0 for j in range({{(2*ceil(l/2)-1)}})]) for i in range({{ceil(l/2)}})]).reshape({{ceil(l/2)}}, {{(2*ceil(l/2)-1)}}).T  */\
+    /* @SPHVerify: post KM2 = sp.Matrix([sp.Matrix([sp.symbols(f'K_{ {{ceil(l/2)}}+j-i}') if j - i < {{floor(l/2)}} and j - i >= 0 else 0 for j in range({{(2*floor(l/2)-1)}})]) for i in range({{floor(l/2)}})]).reshape({{floor(l/2)}}, {{(2*floor(l/2)-1)}}).T  */\
+    /* @SPHVerify: post KM3 = sp.Matrix([sp.Matrix([KTx[j-i] if j - i < {{ceil(l/2)}} and j - i >= 0 else 0 for j in range({{(2*ceil(l/2)-1)}})]) for i in range({{ceil(l/2)}})]).reshape({{ceil(l/2)}}, {{(2*ceil(l/2)-1)}}).T  */\
+    /* @SPHVerify: post T0 = KM0 @ AO0  */\
+    /* @SPHVerify: post T2 = KM2 @ AO2  */\
+    /* @SPHVerify: post T3 = KM3 @ AO3  */\
+    /* @SPHVerify: post assert T0 == CM0  */\
+    /* @SPHVerify: post assert T2 == CM2  */\
+    /* @SPHVerify: post assert T3 == CM3  */\
+    bkey KT; /* @SPHVerify: ignore  */\
     {% for k in range(l) -%}
     {%- for i in range(ceil(l/2)) -%}
     {%- for j in range(ceil(l/2)) -%}
@@ -127,16 +150,19 @@
     {% endfor -%}
     {%- endfor -%}
     {% endfor -%}
-    }
+    } /* @SPHVerify: ignore  */\
+    /* @SPHVerify: endfunc matmul  */
+
+#define MATMUL_FIRST(C, A, K) MATMUL(C, A, K); 
 
 {% else %}
 
 #define MATMUL_FIRST(C, A, K) /* @SPHVerify: func matmul_first(C, A, K)  */\
-    /* @SPHVerify: pre C = [sp.Matrix([0 for j in range({{simd_size}})]) for i in range({{l}})]*/\
-    /* @SPHVerify: pre A = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
-    /* @SPHVerify: pre K = sp.Matrix([sp.symbols(f'K_{ {{l-1}}-i }') if i < {{l}} else sp.symbols(f'K_{ {{2*l-1}}-i }') * {{kappa}} for i in range({{2*l-1}})])*/\ 
-    /* @SPHVerify: post AO = sp.Matrix([A[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
-    /* @SPHVerify: post CO = sp.Matrix([C[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: pre Cx = [sp.Matrix([0 for j in range({{simd_size}})]) for i in range({{l}})]*/\
+    /* @SPHVerify: pre Ax = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre Kx = sp.Matrix([sp.symbols(f'K_{ {{l-1}}-i }') if i < {{l}} else sp.symbols(f'K_{ {{2*l-1}}-i }') * {{kappa}} for i in range({{2*l-1}})])*/\ 
+    /* @SPHVerify: post AO = sp.Matrix([Ax[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post CO = sp.Matrix([Cx[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
     /* @SPHVerify: post KM = sp.Matrix([[sp.symbols(f'K_{i-j}') for j in range(i+1)] + [{{kappa}} * sp.symbols(f'K_{ {{l}}-j+i}') for j in range(i+1, {{l}})] for i in range({{l}})])  */\
     /* @SPHVerify: post T = KM * AO  */\
     /* @SPHVerify: post assert T == CO  */\
@@ -152,12 +178,12 @@
     /* @SPHVerify: endfunc matmul_first  */
 
 #define MATMUL(C, A, K) /* @SPHVerify: func matmul(C, A, K)  */\
-    /* @SPHVerify: pre C = [sp.Matrix([sp.symbols(f'c_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\
-    /* @SPHVerify: pre A = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
-    /* @SPHVerify: pre K = sp.Matrix([sp.symbols(f'K_{ {{l-1}}-i }') if i < {{l}} else sp.symbols(f'K_{ {{2*l-1}}-i }') * {{kappa}} for i in range({{2*l-1}})])*/\ 
-    /* @SPHVerify: pre CM = sp.Matrix([C[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
-    /* @SPHVerify: post AO = sp.Matrix([A[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
-    /* @SPHVerify: post CO = sp.Matrix([C[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: pre Cx = [sp.Matrix([sp.symbols(f'c_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\
+    /* @SPHVerify: pre Ax = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre Kx = sp.Matrix([sp.symbols(f'K_{ {{l-1}}-i }') if i < {{l}} else sp.symbols(f'K_{ {{2*l-1}}-i }') * {{kappa}} for i in range({{2*l-1}})])*/\ 
+    /* @SPHVerify: pre CM = sp.Matrix([Cx[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post AO = sp.Matrix([Ax[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post CO = sp.Matrix([Cx[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
     /* @SPHVerify: post KM = sp.Matrix([[sp.symbols(f'K_{i-j}') for j in range(i+1)] + [{{kappa}} * sp.symbols(f'K_{ {{l}}-j+i}') for j in range(i+1, {{l}})] for i in range({{l}})])  */\
     /* @SPHVerify: post T = CM + KM * AO  */\
     /* @SPHVerify: post assert T == CO  */\
@@ -173,11 +199,11 @@
 
 {% if not ifma %}
 #define MATMUL_NOPRE_FIRST(C, A, K) /* @SPHVerify: func matmul_nopre_first(C, A, K)  */\
-    /* @SPHVerify: pre C = [sp.Matrix([0 for j in range({{simd_size}})]) for i in range({{l}})]*/\
-    /* @SPHVerify: pre A = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
-    /* @SPHVerify: pre K = sp.Matrix([sp.symbols(f'K_{i}') for i in range({{l}})])*/\ 
-    /* @SPHVerify: post AO = sp.Matrix([A[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
-    /* @SPHVerify: post CO = sp.Matrix([C[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: pre Cx = [sp.Matrix([0 for j in range({{simd_size}})]) for i in range({{l}})]*/\
+    /* @SPHVerify: pre Ax = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre Kx = sp.Matrix([sp.symbols(f'K_{i}') for i in range({{l}})])*/\ 
+    /* @SPHVerify: post AO = sp.Matrix([Ax[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post CO = sp.Matrix([Cx[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
     /* @SPHVerify: post KM = sp.Matrix([[sp.symbols(f'K_{i-j}') for j in range(i+1)] + [{{kappa}} * sp.symbols(f'K_{ {{l}}-j+i}') for j in range(i+1, {{l}})] for i in range({{l}})])  */\
     /* @SPHVerify: post T = KM * AO  */\
     /* @SPHVerify: post assert T == CO  */\
@@ -199,12 +225,12 @@
 // TODO need to add overflow check
 
 #define MATMUL_NOPRE(C, A, K) /* @SPHVerify: func matmul_nopre(C, A, K)  */\
-    /* @SPHVerify: pre C = [sp.Matrix([sp.symbols(f'c_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\
-    /* @SPHVerify: pre A = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
-    /* @SPHVerify: pre K = sp.Matrix([sp.symbols(f'K_{i}') for i in range({{l}})])*/\ 
-    /* @SPHVerify: pre CM = sp.Matrix([C[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
-    /* @SPHVerify: post AO = sp.Matrix([A[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
-    /* @SPHVerify: post CO = sp.Matrix([C[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: pre Cx = [sp.Matrix([sp.symbols(f'c_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\
+    /* @SPHVerify: pre Ax = [sp.Matrix([sp.symbols(f'a_{i}_{j}') for j in range({{simd_size}})]) for i in range({{l}})]*/\ 
+    /* @SPHVerify: pre Kx = sp.Matrix([sp.symbols(f'K_{i}') for i in range({{l}})])*/\ 
+    /* @SPHVerify: pre CM = sp.Matrix([Cx[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post AO = sp.Matrix([Ax[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
+    /* @SPHVerify: post CO = sp.Matrix([Cx[i] for i in range({{l}})]).reshape({{l}}, {{simd_size}})  */\
     /* @SPHVerify: post KM = sp.Matrix([[sp.symbols(f'K_{i-j}') for j in range(i+1)] + [{{kappa}} * sp.symbols(f'K_{ {{l}}-j+i}') for j in range(i+1, {{l}})] for i in range({{l}})])  */\
     /* @SPHVerify: post T = CM + KM * AO  */\
     /* @SPHVerify: post assert T == CO  */\
