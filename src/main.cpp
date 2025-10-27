@@ -57,7 +57,7 @@ double benchmark(F f, T* in, K* key, K* res, int degree, std::string name){
     std::vector<double> times;
 
     myInt64 start, end;
-    const int repetitions = 5;
+    const int repetitions = 10;
     const double cycles_req = 1e9;
 
     double multiplier = 2;
@@ -128,7 +128,7 @@ int main(int argc, char* argv[]){
 #ifdef BENCH_ONE
     std::cout << string_length << "," << mine << std::endl;
 #else
-    std::cout << _PI << ","  << _THETA << "," << _L << "," << _UNROLL << "," << _SIMD << "," << degree << "," << string_length << "," << mine << "," << _CPI << "," << cpi << "," << cpi - _CPI << "," << err << "," << (double)(cpi - _CPI) / std::max(1,_UNROLL-1)  << std::endl;
+    std::cout << _PI << ","  << _THETA << "," << _L << "," << _UNROLL << "," << _SIMD << "," << degree << "," << string_length << "," << mine - start << "," << _CPI << "," << cpi << "," << cpi - _CPI << "," << err << "," << (double)(cpi - _CPI) / std::max(1,_UNROLL-1)  << std::endl;
 #endif
     for (int i = 0; i < _L; i++){
         oracle.x[i] = *res_zz % (1L << _BIG);
@@ -140,7 +140,7 @@ int main(int argc, char* argv[]){
         return 1;
     }
 #else
-    std::cout << _PI << "," << _THETA << ", Degree: " << degree << std::endl;
+    std::cout << _PI << "," << _THETA << "," << _L << "," << _BIG << "," << _SMALL << ", Degree: " << degree << std::endl;
     for(int seed = 0; seed < 1000; seed++){
         ZZ key_zz = initialize(degree, in_str, in_zz, in, seed);
         ZZ key_ntl = key_zz;

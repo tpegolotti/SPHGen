@@ -167,9 +167,9 @@ fn elementwise_add(reg ptr u256[{{l}}] A, reg ptr u256[{{l}}] B) -> reg ptr u256
 
 export
 fn unrolled(reg u64 TMPIN, reg u64 KMIN, reg u64 ap, reg u256 bigv_mask, reg u256 smallv_mask, reg u256 gather_small_mask, reg u256 or_mask) {  
-    reg u256[{{l}}] TMP;
+    stack u256[{{l}}] TMP;
     stack u256[{{l}}] ACC;
-    reg u256[{{2*l-1}}] KM;
+    stack u256[{{2*l-1}}] KM;
 
     stack u256 bigv_mask_stack = bigv_mask;
     stack u256 smallv_mask_stack = smallv_mask;
@@ -285,9 +285,9 @@ fn unrolled(reg u64 TMPIN, reg u64 KMIN, reg u64 ap, reg u256 bigv_mask, reg u25
 
 export
 fn cleanup(reg u64 TMPIN, reg u64 KMIN, reg u64 ap, reg u256 bigv_mask, reg u256 smallv_mask, reg u256 gather_small_mask, reg u256 or_mask) {  
-    reg u256[{{l}}] TMP;
+    stack u256[{{l}}] TMP;
     stack u256[{{l}}] ACC;
-    reg u256[{{2*l-1}}] KM;
+    stack u256[{{2*l-1}}] KM;
 
     stack u256 bigv_mask_stack = bigv_mask;
     stack u256 smallv_mask_stack = smallv_mask;

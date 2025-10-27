@@ -30,6 +30,7 @@
 
 {% if jasmin != 2 %}
 
+{% if not karatsuba %}
 void eval(unsigned char* in, bigint key, bigint* res, int degree){
     int cur = 0;
     const vtype thetav = VBROADCAST(_THETA);
@@ -42,9 +43,8 @@ void eval(unsigned char* in, bigint key, bigint* res, int degree){
     vtype rlast;
     bbigint TMP;
     bacc ACC;
-    {% if not karatsuba %}
+
     for (int i = 0; i < _L; i++){ACC.x[i] = VSETZERO;}
-    {% endif %}
 
     bkey KM[_UNROLL];
     bigint Ks[_SIMD+_UNROLL];
@@ -219,14 +219,6 @@ void eval(unsigned char* in, bigint key, bigint* res, int degree){
         carry_round(&Ks[i]);
     }
 
-    {% if karatsuba %}
-    for(int u = 0; u < _UNROLL; u++){
-        for(int i = 0; i < _L; i++){
-            KM[u].x[i] = VBROADCAST((unsigned long long int)Ks[_SIMD-1+u].x[i]);
-        }
-    }
-    {% else %}
-
     {#
     for(int u = 0; u < _UNROLL; u++){
         for(int i = 0; i < _L; i++){
@@ -242,8 +234,6 @@ void eval(unsigned char* in, bigint key, bigint* res, int degree){
             KM[u].x[_L + i - 1] = VBROADCAST((unsigned long long int)((ull)_KAPPA * Ks[_SIMD-1+u].x[_L - i]));
         }
     }
-
-    {% endif %}
 
 
     {% for i in range(l) %}
@@ -353,5 +343,76 @@ void eval(unsigned char* in, bigint key, bigint* res, int degree){
     }
     carry_round(res);
 }
+{% else %}
+void eval(unsigned char* in, bigint key, bigint* res, int degree){
+    int cur = 0;
+    const vtype thetav = VBROADCAST(_THETA);
+    const vtype bigv_mask = VBROADCAST((1L << _BIG) - 1);
+    const vtype smallv_mask = VBROADCAST((1L << _SMALL) - 1);
+    const vtype gather_small_mask = VBROADCAST((1L << SMALLR) - 1);
+    const vtype or_mask = VBROADCAST((1ull << SMALLR));
+    const vtype vindex = VINDEX;
+    bbigint TMP;
+    bacc ACC;
 
+    bkey KM[_UNROLL];
+    bigint Ks[_SIMD+_UNROLL];
+    copy(&Ks[0], &key);
+    for (int i = 1; i < _SIMD; i++){
+        mul(&Ks[i-1], &key, &Ks[i]);
+        carry_round(&Ks[i]);
+    }
+    for (int i = _SIMD; i < _SIMD+_UNROLL-1; i++){
+        mul(&Ks[i-1], &Ks[_SIMD-1], &Ks[i]);
+        carry_round(&Ks[i]);
+    }
+
+    for(int u = 0; u < _UNROLL; u++){
+        for(int i = 0; i < _L; i++){
+            KM[u].x[i] = VBROADCAST((unsigned long long int)Ks[_SIMD-1+u].x[i]);
+        }
+    }
+
+    // start computation
+    if(degree >= _SIMD){
+        GATHER(TMP, in);
+        cur = _SIMD;
+        for (; cur < degree - (_SIMD*_UNROLL) + 1; cur+=_SIMD*_UNROLL){
+            UNROLLED(ACC, TMP, KM, in, cur)
+        }
+        for (; cur < degree - _SIMD + 1; cur+=_SIMD){
+            CLEANUP(ACC, TMP, KM, in, cur)
+        }
+        {% if ifma -%}
+        ull FIN[_L * _SIMD]; 
+        unsigned long long int TFIN[_L * _SIMD]; 
+        {% for i in range(l) -%}
+        VSTORE(&TFIN[{{i}}*_SIMD], TMP.x[{{i}}]); 
+        {% endfor -%}
+        for(int i = 0; i < _L * _SIMD; i++){ 
+            FIN[i] = TFIN[i]; 
+        }
+        finalize(res, FIN, Ks);
+        {% else -%}
+        ull FIN[_L * _SIMD]; 
+        {% for i in range(l) -%}
+        VSTORE(&FIN[{{i}}*_SIMD], TMP.x[{{i}}]); 
+        {% endfor -%}
+        finalize(res, FIN, Ks);
+        {%- endif %}
+    }
+    if(cur == 0){
+        load_scalar(res, in);
+        cur = 1;
+    }
+    bigint tmp;
+    for (; cur < degree; cur+=1){
+        load_scalar(&tmp, in + cur * _BLOCK);
+        fmadd(res, &Ks[0], &tmp);
+        carry_round(&tmp);
+        copy(res, &tmp);
+    }
+    carry_round(res);
+}
+{% endif %}
 {% endif %}

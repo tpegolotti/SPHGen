@@ -3,7 +3,10 @@ import os
 
 sp.init_printing()
 
+
 class bcolors:
+    """ANSI color helpers to style terminal output."""
+
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
     OKCYAN = '\033[96m'
@@ -14,7 +17,19 @@ class bcolors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
+
 def register_ops(file_contents):
+    """Collect operation signatures declared with ``@SPHVerify``.
+
+    Parameters
+    ----------
+    file_contents : file contents to verify.
+
+    Returns
+    -------
+    dict[str, tuple[list[str], str]]
+        Mapping from operation name to argument list and Python body string.
+    """
     # look for the rows that contain @SPHVerify
     rows = []
     for line in file_contents.split('\n'):
@@ -22,7 +37,7 @@ def register_ops(file_contents):
             rows.append(line)
 
     # split the rows using the func and endfunc tags
-    ops = {} # (pre, body, post)
+    ops = {}  # (pre, body, post)
 
     cur_op = ''
     for line in rows:
@@ -32,11 +47,23 @@ def register_ops(file_contents):
             params = cur_op.split('(')[1].split(')')[0].split(',')
             body = cur_op.split(':')[1].strip()
             cur_op = cur_op.split('(')[0].strip()
-            ops[cur_op] = (params, body) # parameters, body
-       
+            ops[cur_op] = (params, body)  # parameters, body
+
     return ops
 
+
 def register_functions(file_contents):
+    """Collect function verification blocks declared with ``@SPHVerify``.
+
+    Parameters
+    ----------
+    file_contents : file contents to verify.
+
+    Returns
+    -------
+    dict[str, tuple[list[str], list[str], list[str]]]
+        Mapping from function name to (pre, body, post) instruction lists.
+    """
     # look for the rows that contain @SPHVerify
     rows = []
     toappend = False
@@ -49,15 +76,15 @@ def register_functions(file_contents):
                 toappend = True
 
     # split the rows using the func and endfunc tags
-    funcs = {} # (pre, body, post)
+    funcs = {}  # (pre, body, post)
 
     cur_func = ''
     for line in rows:
-        if 'func' in line and not 'endfunc' in line:
+        if 'func' in line and 'endfunc' not in line:
             cur_func = line.split('func')[1].strip()
             cur_func = cur_func.split('*/')[0].strip()
             # print(f'Found function: {cur_func}')
-            funcs[cur_func] = ([],[],[]) # pre, body, post
+            funcs[cur_func] = ([], [], [])  # pre, body, post
         elif 'endfunc' in line:
             cur_func = ''
         elif 'const' in line:
@@ -87,7 +114,8 @@ def register_functions(file_contents):
             else:
                 idx = 1
                 stripped = line.replace('.', '')
-                stripped = stripped.split(';')[0].strip()  # remove everything after the first semicolon
+                # remove everything after the first semicolon
+                stripped = stripped.split(';')[0].strip()
                 if '*/' in stripped:
                     stripped = stripped.split('*/')[0].strip()
                 if stripped == '':
@@ -100,7 +128,22 @@ def register_functions(file_contents):
             funcs[cur_func][idx].append(stripped)
     return funcs
 
-def generate_code(ops, funcs):
+
+def generate_ops(ops):
+    """Emit Python code for the operations.
+
+    Parameters
+    ----------
+    ops : dict[str, tuple[list[str], str]]
+        Operation definitions produced by ``register_ops``.
+    funcs : dict[str, tuple[list[str], list[str], list[str]]]
+        Function verification snippets produced by ``register_functions``.
+
+    Returns
+    -------
+    str
+        Standalone Python code that implements the Jasmin operations.
+    """
     code = "import sympy as sp\nimport numpy as np\n\n"
     # generate the code for the operations
     for op in ops:
@@ -108,82 +151,83 @@ def generate_code(ops, funcs):
         code += f"def {op}({', '.join(params)}):\n"
         code += f"    {body}\n\n"
 
-    # generate the code for the functions
-    # for func in funcs:
-    #     pre, body, post = funcs[func]
-    #     code += f"def {func}:\n"
-    #     code += "".join(f"    {line}\n" for line in body)
-    #     code += "\n"
-
     return code
 
+
 def oracle_carry_round(a_in, big, small, theta):
+    """Reference implementation for the carry_round Jasmin primitive."""
     a = a_in.copy()
     l = len(a)
-    for i in range(l-1):
-        a[i+1] += (a[i] / 2 ** big)
+    for i in range(l - 1):
+        a[i + 1] += (a[i] / 2 ** big)
         a[i] %= (1 << big)
-    a[0] += (a[l-1] / 2 ** small) * theta
-    a[l-1] %= (1 << small)
+    a[0] += (a[l - 1] / 2 ** small) * theta
+    a[l - 1] %= (1 << small)
     a[1] += (a[0] / 2 ** big)
     a[0] %= (1 << big)
     a[2] += (a[1] / 2 ** big)
     a[1] %= (1 << big)
     return a
 
+
 def verify_functions(code, funcs):
-    # local_vars = {}
-    # global_vars = {}
-    # exec(code, {}, local_vars)
-    # print(local_vars)
+    """Execute the generated helpers against verification snippets.
+
+    Parameters
+    ----------
+    code : str
+        Python source created by ``generate_ops`` to materialise the ops.
+    funcs : dict[str, tuple[list[str], list[str], list[str]]]
+        Verification sequences keyed by function name.
+    """
     for f in funcs:
+        # Given the ops in 'code', generate the function code to test
         code_to_test = code + "\n"
 
         # init the precondition
         pre = funcs[f][0]
         code_to_test += "".join(f"{line}\n" for line in pre)
 
-
-        # exec the body
-        # code_to_test += f"result = {f}\n"
+        # gen the body
         body = funcs[f][1]
         code_to_test += "".join(f"{line}\n" for line in body)
 
-        # verify the post
+        # add the post
         post = funcs[f][2]
         code_to_test += "".join(f"{line}\n" for line in post)
 
         # print the code to a file and execute it
-        #if .tmp doesn't exist, create it
+        # if .tmp doesn't exist, create it
         tmp_dir = os.path.join(os.path.dirname(__file__), '.tmp')
         if not os.path.exists(tmp_dir):
             os.makedirs(tmp_dir)
         tmp_file = os.path.join(tmp_dir, f'{f}.py')
         with open(tmp_file, 'w') as file:
             file.write(code_to_test)
-        
+
         # print(f'Executing {tmp_file}', flush=True)
         # execute the file
         import subprocess
         result = subprocess.run(['python3', tmp_file])
         if result.returncode != 0:
-            print(f'Function {f:<40} {bcolors.FAIL:>12}{bcolors.BOLD}FAILED{bcolors.ENDC}')
+            print(
+                f'Function {
+                    f:<40} {
+                    bcolors.FAIL:>12}{
+                    bcolors.BOLD}FAILED{
+                    bcolors.ENDC}')
             # print(result.stderr)
             continue
         else:
-            print(f'Function {f:<40} {bcolors.OKGREEN:>12}{bcolors.BOLD}PASSED{bcolors.ENDC}', flush=True)
+            print(
+                f'Function {
+                    f:<40} {
+                    bcolors.OKGREEN:>12}{
+                    bcolors.BOLD}PASSED{
+                    bcolors.ENDC}',
+                flush=True)
 
 
-        # if f == 'carry_round':
-        # print(code_to_test, flush=True)
-        # try:
-        #     exec(code_to_test, {}, locals())
-        # except AssertionError as e:
-        #     print(f'Function {f:<40} {bcolors.FAIL:>12}{bcolors.BOLD}FAILED{bcolors.ENDC}')
-        #     continue
-
-        # print green if it passed
-        # print(f'Function {f:<40} {bcolors.OKGREEN:>12}{bcolors.BOLD}PASSED{bcolors.ENDC}', flush=True)
 
 def verify():
     # get directory of this file
@@ -197,10 +241,8 @@ def verify():
 
     ops = register_ops(file_contents)
     funcs = register_functions(file_contents)
-    code = generate_code(ops, funcs)
-    # print(code)
+    code = generate_ops(ops)
     verify_functions(code, funcs)
-    
 
 
 if __name__ == '__main__':
