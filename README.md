@@ -2,7 +2,9 @@
 
 ## Dependencies
 
-Generating the library requires Jinja for template generation, sympy and numpy for verification. Running `pip install -r requirements.txt` installs the packages.
+We compile using `GCC 14.1.0` and use `Python 3.12.12` for the code generation.
+
+Generating the library requires Jinja for template generation, sympy and numpy for verification. Running `pip install -r requirements.txt` installs the packages and the correct versions.
 
 ### Optional dependencies
 
@@ -44,7 +46,7 @@ make -j
 
 ### Jasmin
 
-SPHGen supports generating both C and [Jasmin](https://github.com/jasmin-lang/jasmin) code. Jasmin code can then either used for verification, or can be compiled to assembly. We install Jasmin using `opam install jasmin`, but other possibilities are available [here](https://github.com/jasmin-lang/jasmin/wiki/Installation-instructions).
+SPHGen supports generating both C and [Jasmin](https://github.com/jasmin-lang/jasmin) code. Jasmin code can then either used for verification, or can be compiled to assembly. We install Jasmin using `opam install jasmin`, but other possibilities are available [here](https://github.com/jasmin-lang/jasmin/wiki/Installation-instructions). We use `Jasmin Compiler 2025.02.1`.
 
 
 
