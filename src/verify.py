@@ -210,22 +210,10 @@ def verify_functions(code, funcs):
         import subprocess
         result = subprocess.run(['python3', tmp_file])
         if result.returncode != 0:
-            print(
-                f'Function {
-                    f:<40} {
-                    bcolors.FAIL:>12}{
-                    bcolors.BOLD}FAILED{
-                    bcolors.ENDC}')
-            # print(result.stderr)
+            print(f'Function {f:<40} {bcolors.FAIL:>12}{bcolors.BOLD}FAILED{bcolors.ENDC}')
             continue
         else:
-            print(
-                f'Function {
-                    f:<40} {
-                    bcolors.OKGREEN:>12}{
-                    bcolors.BOLD}PASSED{
-                    bcolors.ENDC}',
-                flush=True)
+            print(f'Function {f:<40} {bcolors.OKGREEN:>12}{bcolors.BOLD}PASSED{bcolors.ENDC}',flush=True)
 
 
 
