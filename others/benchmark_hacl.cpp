@@ -65,7 +65,7 @@ int main() {
 
     std::sort(cycles.begin(), cycles.end());
 
-    printf("%d,%f,%f,%f\n", STRING_LEN, cycles[reps/2], multiplier, num_runs);
+    printf("%d,%f,%f,%d\n", STRING_LEN, cycles[reps/2], multiplier, num_runs);
 
     return 0;
 }
