@@ -7,7 +7,7 @@ SPHGen uses Jinja2 templates to generate a vectorized C library header that you 
 ## Repository layout
 
   -	`./gen.py`: main Python script. It computes optimal parameters for a given prime field and emits the final header at `./src/library.h`.
-  -	`./templates/`: Jinja2 templates used by `gen.py` for code generation.
+  -	`./templates/`: Jinja2 templates used by `gen.py` for code generation. The functions in the templates are explained in the paper.
   -	`./src/verify.py`: symbolic execution script to verify functional correctness.
   -	`./src/main.cpp`: benchmarking and testing code. Example of how to call the generated library.
   - `./others`: scripts to benchmark openssl and HACL*. Directory where we clone their repositories.
@@ -177,7 +177,7 @@ make test PI=130 THETA=5 SIMD=4   # AVX2 path
 This target builds a test binary for one prime. Run the produced binary (the Makefile prints its path). Expected: it completes without errors and prints no error messages during runtime.
 
 ### Hardware setup
-We measure clock cycles from the time step countes using the `rdtsc` instruction. To obtain correct measurements, we suggest disabling frequency scaling. See [above](#running-the-experiments-from-the-paper) for the instructions.
+We measure clock cycles from the time step counters using the `rdtsc` instruction. To obtain correct measurements, we suggest disabling frequency scaling. See [above](#running-the-experiments-from-the-paper) for the instructions.
 
 ### Reproduce paper experiments
 We start by executing the parameter sweep of the full prime field range. 
@@ -217,5 +217,5 @@ generates a jasmin version, run security checks on it, and then compile it into 
 We provide CSV files for our results in the `.paper_results/` folder.
 
 ### Known Limitations
-- At the time of writing, the performance model is tuned for Intel Sapphire Rapids. Latency and thrughput parameters are not adjusted depending on the host machine.
+- At the time of writing, the performance model is tuned for Intel Sapphire Rapids. Latency and throughput parameters are not adjusted depending on the host machine.
 - Auto detection of CPU flags is not implemented, the user needs to manually select which version to generate (or not to generate in case of the benchmarking scripts)
