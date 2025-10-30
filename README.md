@@ -72,9 +72,9 @@ SPHGen supports generating both C and [Jasmin](https://github.com/jasmin-lang/ja
 ## Generation
 
 There are a few options:
-  - `make main` creates a binary that benchmarks and tests one specific prime version
-  - `make test` creates a binary that tests one specific prime
-  - `make plot` benchmarks for various prime fields
+  - `make main` creates a binary that benchmarks and tests one specific prime version.
+  - `make test` creates a binary that tests one specific prime and runs verification and tests.
+  - `make plot` runs a benchmarks for prime fields between 100 and 400 bits of precision.
 
 Makefile options:
   - `PI`: sets up the power of 2 for the prime
@@ -150,7 +150,7 @@ Here is a step by step guide for the artifact evalation.
 
 ### Prerequisites 
 
-  -	OS: Ubuntu 22.04 (tested). macOS 14 is fine for code generation; benchmarking targets x86-64.
+  -	OS: Ubuntu 22.04 (tested).
   - CPU: x86-64 with AVX2 (required). AVX-512/IFMA optional for those experiments.
   - Toolchain: GCC 14.1.0, Python 3.12.12, make, git.
   - Toolchain: Jinja2 for code generation, Sympy and Numpy for verifications.
@@ -174,7 +174,7 @@ Generate code and build a small binary for the Poly1305 prime ($2^{130}-5$):
 make test PI=130 THETA=5 SIMD=4   # AVX2 path
 ````
 
-This target builds a test binary for one prime. Run the produced binary (the Makefile prints its path). Expected: it completes without errors and prints no error messages during runtime.
+This target builds a test binary for one prime. Run the produced binary. Expected: runs the tests for increasing polynomial degree, and it completes without errors.
 
 ### Hardware setup
 We measure clock cycles from the time step counters using the `rdtsc` instruction. To obtain correct measurements, we suggest disabling frequency scaling. See [above](#running-the-experiments-from-the-paper) for the instructions.
@@ -211,10 +211,10 @@ Then, running
 ```
 make test_jasmin PI=130 THETA=5 SIMD=4
 ```
-generates a jasmin version, run security checks on it, and then compile it into assembly.
+generates a jasmin version, run security checks on it, and then compile it into assembly. Analyzing the `unrolled` and `cleanup` functions takes around a minute.
 
 ### Expected results
-We provide CSV files for our results in the `.paper_results/` folder.
+We provide CSV files for our results in the `.paper_results/` folder. We provide a jupyter notebook (`plot.ipynb`) that plots figure 5, 6, and 7a from the paper. The trends should match.
 
 ### Known Limitations
 - At the time of writing, the performance model is tuned for Intel Sapphire Rapids. Latency and throughput parameters are not adjusted depending on the host machine.
