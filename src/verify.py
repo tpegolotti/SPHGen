@@ -21,13 +21,10 @@ class bcolors:
 def register_ops(file_contents):
     """Collect operation signatures declared with ``@SPHVerify``.
 
-    Parameters
-    ----------
-    file_contents : file contents to verify.
+    Args:
+        file_contents : file contents to verify.
 
     Returns
-    -------
-    dict[str, tuple[list[str], str]]
         Mapping from operation name to argument list and Python body string.
     """
     # look for the rows that contain @SPHVerify
@@ -55,13 +52,10 @@ def register_ops(file_contents):
 def register_functions(file_contents):
     """Collect function verification blocks declared with ``@SPHVerify``.
 
-    Parameters
-    ----------
-    file_contents : file contents to verify.
+    Args:
+        file_contents : file contents to verify.
 
-    Returns
-    -------
-    dict[str, tuple[list[str], list[str], list[str]]]
+    Returns:
         Mapping from function name to (pre, body, post) instruction lists.
     """
     # look for the rows that contain @SPHVerify
@@ -130,19 +124,15 @@ def register_functions(file_contents):
 
 
 def generate_ops(ops):
-    """Emit Python code for the operations.
+    """Emit Python code for the operations, which are primitives used in the functions.
+    Examples are addition, multiplication, bit shifts, etc.
 
-    Parameters
-    ----------
-    ops : dict[str, tuple[list[str], str]]
-        Operation definitions produced by ``register_ops``.
-    funcs : dict[str, tuple[list[str], list[str], list[str]]]
-        Function verification snippets produced by ``register_functions``.
+    Args:
+        ops : Operation definitions produced by ``register_ops``.
+        funcs : Function verification snippets produced by ``register_functions``.
 
-    Returns
-    -------
-    str
-        Standalone Python code that implements the Jasmin operations.
+    Returns:
+        Standalone Python code that implements the operations.
     """
     code = "import sympy as sp\nimport numpy as np\n\n"
     # generate the code for the operations
@@ -155,7 +145,7 @@ def generate_ops(ops):
 
 
 def oracle_carry_round(a_in, big, small, theta):
-    """Reference implementation for the carry_round Jasmin primitive."""
+    """Reference implementation for the carry_round function."""
     a = a_in.copy()
     l = len(a)
     for i in range(l - 1):
@@ -173,12 +163,9 @@ def oracle_carry_round(a_in, big, small, theta):
 def verify_functions(code, funcs):
     """Execute the generated helpers against verification snippets.
 
-    Parameters
-    ----------
-    code : str
-        Python source created by ``generate_ops`` to materialise the ops.
-    funcs : dict[str, tuple[list[str], list[str], list[str]]]
-        Verification sequences keyed by function name.
+    Args:
+        code : Code implementing the operations.
+        funcs : Functions read from the source file that need to be verified.
     """
     for f in funcs:
         # Given the ops in 'code', generate the function code to test

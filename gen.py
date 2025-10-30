@@ -17,7 +17,7 @@ def eq_9(big, l, pi, theta_bits, new):
     Returns:
         Residual digits that indicate how close the current configuration is to the limit.
     """
-    assert (new)  # making sure we benchmark the correct thing
+    assert (new)  # making sure we benchmark the correct thing, for the rebuttal
     if not new:
         return 2 * big + l * big - pi + \
             theta_bits + math.floor(math.log2(l)) + 1
@@ -124,6 +124,7 @@ def count_ones(a):
 def model(l, theta, unroll, simd_size, ifma, kara):
     """
     Estimate the number of cycles per iteration for the given prime field configuration.
+    Hardcoded for Sapphire Rapids architecture, for now.
 
     Args:
         l: Number of limbs.
@@ -200,7 +201,7 @@ def gen(
         jasmin,
         new_constraint):
     """
-    Generate library sources for the requested configuration and optional Jasmin output.
+    Generate library sources for the requested configuration.
 
     Args:
         (pi, theta): Prime field.
