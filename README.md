@@ -164,7 +164,7 @@ git clone https://github.com/tpegolotti/SPHGen
 cd SPHGen
 python3.12 -m venv env                            # optional make a virtual environment
 source env/bin/activate
-pip3 install -r requirements
+pip3 install -r requirements.txt
 ```
 
 ### Quick test
