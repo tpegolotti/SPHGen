@@ -164,7 +164,7 @@ git clone https://github.com/tpegolotti/SPHGen
 cd SPHGen
 python3.12 -m venv env                            # optional make a virtual environment
 source env/bin/activate
-pip install -r requirements
+pip3 install -r requirements
 ```
 
 ### Quick test
@@ -181,14 +181,13 @@ We measure clock cycles from the time step counters using the `rdtsc` instructio
 
 ### Reproduce paper experiments
 We start by executing the parameter sweep of the full prime field range. 
-A shorter sweep of all prime fields can be run by executing 
 ```
-./bench_sphgen.sh stride 20
+./bench_sphgen.sh
 ```
 This takes a long time (see above).
 A shorter sweep of all prime fields can be run by executing 
 ```
-./bench_sphgen.sh stride 20
+./bench_sphgen.sh -stride 20
 ```
 
 Full explanation of the script's options is given in the [Benchmark various prime fields](#benchmark-various-prime-fields) section.
