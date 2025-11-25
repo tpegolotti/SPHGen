@@ -22,7 +22,7 @@ SPHGen uses Jinja2 templates to generate a vectorized C library header that you 
 
 We compile using `GCC 14.1.0` and use `Python 3.12.12` for the code generation.
 
-Generating the library requires Jinja for template generation, sympy and numpy for verification. Install correct versions by executing `pip install -r requirements.txt`.
+Generating the library requires Jinja for template generation, sympy and numpy for verification. Install correct versions by executing `pip3 install -r requirements.txt`.
 
 ### Optional dependencies (for paper experiments)
 
@@ -127,7 +127,7 @@ Here are all the options:
   - `-noavx512`         : disables avx512 experiments
   - `-noifma`           : disables AVX512IFMA experiments
   - `-nokaratsuba`      : disables karatsuba multiplication experiments
-  - `stride <N>`        : run every N-th prime (for example stride 2 runs $\pi=101, 103, \dots$). Default value is 1.
+  - `-stride <N>`        : run every N-th prime (for example stride 2 runs $\pi=101, 103, \dots$). Default value is 1.
 
 ### Benchmark poly1305 implementations
 

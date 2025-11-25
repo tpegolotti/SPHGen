@@ -28,25 +28,25 @@ generate_jasmin: src/main.cpp
 	jasminc -pasm src/library.jazz > src/library.s
 
 verify: bin generate src/main.cpp
-	python src/verify.py
+	python3 src/verify.py
 
 main: bin generate src/main.cpp
 	g++ src/main.cpp -o bin/main $(FLAGS);
-	python src/verify.py;\
+	python3 src/verify.py;\
 
 asm: bin generate src/main.cpp
 	g++ src/main.cpp -o bin/main.s -S $(FLAGS)
 
 test: bin generate src/main.cpp
 	@g++ src/main.cpp -o bin/test $(TEST_FLAGS) -DTEST; \
-	python src/verify.py;\
+	python3 src/verify.py;\
 	for number in `seq $(LOWER) $(UPPER)`; do \
         ./bin/test $$number; \
     done \
 
 test_jasmin: bin generate_jasmin src/main.cpp src/library.s
 	@g++ src/main.cpp src/library.s -o bin/test_jasmin $(TEST_FLAGS) -DTEST; \
-	python src/verify.py;\
+	python3 src/verify.py;\
 	for number in `seq $(LOWER) $(UPPER)`; do \
         ./bin/test_jasmin $$number; \
     done \
@@ -58,7 +58,7 @@ plot: bin src/main.cpp
 	for i in `seq 1 $(STRIDE) $$length`; do \
 		pi=`echo $$pis | cut -d ' ' -f $$i`; \
 		theta=`echo $$thetas | cut -d ' ' -f $$i`; \
-		python gen.py -p $$pi -t $$theta -s $(SIMD) -u $(UNROLL) $(OPTIONS); \
+		python3 gen.py -p $$pi -t $$theta -s $(SIMD) -u $(UNROLL) $(OPTIONS); \
 		g++ src/main.cpp -o bin/plot $(FLAGS) -DPLOT; \
 		./bin/plot $$(( 1600 + $(SIMD) )); \
 	done
@@ -90,7 +90,7 @@ bench_openssl: ./others/benchmark_openssl.cpp
 
 bench_one_inc: bin src/main.cpp
 	@echo "bytes,cycles"
-	@python gen.py -p $(PI) -t $(THETA) -s $(SIMD) -u $(UNROLL) $(OPTIONS); 
+	@python3 gen.py -p $(PI) -t $(THETA) -s $(SIMD) -u $(UNROLL) $(OPTIONS); 
 	@g++ src/main.cpp -o bin/bench $(FLAGS) -DBENCH_ONE;
 	@for len in $(shell seq 8 32 1600); do \
 		./bin/bench $$len; \
